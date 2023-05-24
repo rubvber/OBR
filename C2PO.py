@@ -218,7 +218,6 @@ class C2PO(pl.LightningModule):
             init_action_net_path=None,
             freeze_percept_net=False,
             freeze_action_net=False,
-            freeze_prior_pref=False,            
             init_tau=1.0,
             ar_tau=3e-5, 
             min_tau=0.5,                       
