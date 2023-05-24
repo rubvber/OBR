@@ -253,8 +253,7 @@ class C2PO(pl.LightningModule):
         self.init_percept_net_path = init_percept_net_path
         self.init_action_net_path = init_action_net_path
         self.freeze_percept_net = freeze_percept_net
-        self.freeze_action_net = freeze_action_net
-        self.freeze_prior_pref = freeze_prior_pref        
+        self.freeze_action_net = freeze_action_net        
         self.sigma_chi = sigma_chi
         self.init_tau = init_tau
         self.ar_tau = ar_tau                
