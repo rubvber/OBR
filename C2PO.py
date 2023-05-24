@@ -424,10 +424,11 @@ class C2PO(pl.LightningModule):
             var_prime_prev = (2*logsd_prime_prev).exp()
             mu_prime_pred = mu_prime_prev
             var_prime_pred = var_prime_prev
-                            
-            mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1)            
-            mu_prime_pred = mu_prime_pred + (self.D.view(1,1,1,2,-1)*mu_action.unsqueeze(-1)).sum(-2)             
-            var_prime_pred = var_prime_pred + (self.D.view(1,1,1,2,-1)**2*logsd_action.exp().unsqueeze(-1)**2).sum(-2)                
+            
+            if curr_action_lambda is not None:
+                mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1)            
+                mu_prime_pred = mu_prime_pred + (self.D.view(1,1,1,2,-1)*mu_action.unsqueeze(-1)).sum(-2)             
+                var_prime_pred = var_prime_pred + (self.D.view(1,1,1,2,-1)**2*logsd_action.exp().unsqueeze(-1)**2).sum(-2)                
         
             if curr_lambda is None:
                 # If no curr_lamdba was supplied, then we'll use the predicted derivative to produce the state prediction
@@ -459,7 +460,7 @@ class C2PO(pl.LightningModule):
             N,F,C,H,W = x.shape[:]  
             K = rec.shape[2]
 
-            mu_curr, logsd_curr, *r_curr = torch.split(curr_lambda, self.n_latent*2, dim=3)
+            mu_curr, logsd_curr = torch.split(curr_lambda, self.n_latent*2, dim=3)
             mu_pred, logsd_pred = torch.split(pred_lambda, self.n_latent*2, dim=3)
             if curr_action_lambda is None:
                 logsd_action = torch.tensor([], device=x.device)
@@ -667,7 +668,7 @@ class C2PO(pl.LightningModule):
                 '''
 
                 prev_lambda = torch.cat((first_prev_lambda, curr_lambda[:,:-1]), 1)                     
-                pred_lambda = predict(prev_lambda[:,:,:,:self.n_latent*4], curr_lambda=curr_lambda[:,:,:,:self.n_latent*4], curr_action_lambda=curr_action_lambda)
+                pred_lambda = predict(prev_lambda, curr_lambda=curr_lambda, curr_action_lambda=curr_action_lambda)
                 
                 #Compute loss
                 cl_dict = compute_loss({
@@ -763,9 +764,6 @@ class C2PO(pl.LightningModule):
             
 
             return out_dict
-
-        if hasattr(self, 'log_sigma_chi'):
-            self.sigma_chi = self.log_sigma_chi.exp()
 
         K = self.K
         
@@ -1093,8 +1091,6 @@ class C2PO(pl.LightningModule):
         
         self.gumbel_tau['curr_tau'] = np.maximum(self.gumbel_tau['tau0']*np.exp(-self.gumbel_tau['anneal_rate']*self.global_step), self.gumbel_tau['min'])
 
-        out_dict = self.common_eval_step(batch)
-
         if not self.interactive:
             if isinstance(batch, list):
                 ims, _, action_fields = batch[:]
@@ -1205,10 +1201,9 @@ class C2PO(pl.LightningModule):
             self.log('val_loss_final', out_dict['frame_losses'].sum(), sync_dist=True)
 
         if out_dict['total_loss'] is not None: self.log('val_loss_cumul', out_dict['total_loss'], sync_dist=True)
-
+       
         
-        if self.with_action_net:
-            self.log('val_loss_action', out_dict['loss_action'], sync_dist=True)      
+        self.log('val_loss_action', out_dict['loss_action'], sync_dist=True)      
 
         mse_recon = ((ims[:,:end_idx]-out_dict['rec'][:,:end_idx])**2).mean()
         mse_pred  = ((ims[:,end_idx:]-out_dict['rec'][:,end_idx:])**2).mean()
