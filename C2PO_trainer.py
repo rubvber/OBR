@@ -157,7 +157,7 @@ def parseNumList(string):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train IODINE")
 
-    parser.add_argument('--max_epochs', default=200, type=int, "Maximum number of epochs to train for.")
+    parser.add_argument('--max_epochs', default=200, type=int, help="Maximum number of epochs to train for.")
     parser.add_argument('--K', default=4, type=int, help="Number of slots in the model")
     parser.add_argument('--data_str', default='3sprites-3frames', type=str, help='Identifier string to find (dsprites) data')    
     parser.add_argument('--resume_from_checkpoint', default=None, help='Checkpoint from which to resume training')

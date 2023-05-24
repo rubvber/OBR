@@ -1289,7 +1289,7 @@ class C2PO(pl.LightningModule):
             fig = plt.figure(figsize=(10,10))                
             pos = plt.imshow(self.D.t().detach().cpu())                
             fig.colorbar(pos)
-            self.logger.experiment.add_figure('D', fh, self.current_epoch, close=True)                 
+            self.logger.experiment.add_figure('D', fig, self.current_epoch, close=True)                 
         
         return super().validation_epoch_end(outputs)
 
