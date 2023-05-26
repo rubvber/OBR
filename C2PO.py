@@ -1330,10 +1330,7 @@ class C2PO(pl.LightningModule):
 
         pars = []
         if not self.freeze_percept_net:
-            pars.extend([*self.refine_net.parameters(), *self.decoder.parameters(), self.lambda0])
-        
-        if not self.freeze_action_net:
-            pars.extend([self.D, *self.action_net.parameters()])                  
+            pars.extend([*self.refine_net.parameters(), *self.decoder.parameters(), self.D, *self.action_net.parameters(), self.lambda0])            
         
         if self.with_goal_net:
             pars.extend([*self.goal_net.parameters()])

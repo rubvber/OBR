@@ -197,7 +197,7 @@ if __name__ == "__main__":
     parser.add_argument('--with_goal_net', default=False, type=str2bool, help='Include goal net to learn transform from current to target states')
     parser.add_argument('--ad_rule_goal', default=None, type=str, help='Rule-based goal to sample from in active-dsprites')        
     parser.add_argument('--ad_rule_goal_actions', default=False, type=str2bool, help='Whether to generate actions towards goals in active-dsprites')
-    parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing an IODINE network state from which to load the goal net')
+    parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing a C2PO network state from which to load the goal net')
     
 
 
