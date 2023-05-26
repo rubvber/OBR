@@ -278,7 +278,7 @@ class C2PO(pl.LightningModule):
             gradients for inference. I guess autograd requires all intermediate tensors to have requires_grad=True, even if the
             gradient w.r.t. a tensor isn't necessary to compute the gradients of the non-freezed tensors.             
             '''            
-            percept_net = C2PO.load_from_checkpoint(init_percept_net_path, init_percept_net_path=None, init_action_net_path=None, init_goal_net_path=None, foo='blah')             
+            percept_net = C2PO.load_from_checkpoint(init_percept_net_path, init_percept_net_path=None, init_goal_net_path=None, foo='blah')             
             self.decoder = percept_net.decoder
             self.refine_net = percept_net.refine_net
             self.layer_norms = percept_net.layer_norms
@@ -289,7 +289,7 @@ class C2PO(pl.LightningModule):
                 self.D = percept_net.D                                        
                                     
 
-            if not self.init_percept_net_path==self.init_action_net_path:
+            if not self.init_percept_net_path==self.init_goal_net_path
                 del percept_net
         else:
             self.decoder = SBD(in_channels=n_latent+2)            
