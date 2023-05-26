@@ -12,6 +12,7 @@ Code for the C2PO architecture and active dSPrites environment.
 - pytorch lightning 1.7.3
 - scikit-learn 1.1.1
 - tensorboard 2.10.0
+
 See also the requirements.txt file which may be used to set up a conda environment.
 
 ## C2PO
