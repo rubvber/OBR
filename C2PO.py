@@ -289,7 +289,7 @@ class C2PO(pl.LightningModule):
                 self.D = percept_net.D                                        
                                     
 
-            if not self.init_percept_net_path==self.init_goal_net_path
+            if not self.init_percept_net_path==self.init_goal_net_path:
                 del percept_net
         else:
             self.decoder = SBD(in_channels=n_latent+2)            
