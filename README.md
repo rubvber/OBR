@@ -18,6 +18,11 @@ See also the requirements.txt file which may be used to set up a conda environme
 ## Active dSprites
 Active dSprites is a simple multi-object environment with continuous dynamics and control. Objects in active dSprites are a recreation of those in the [dSprites](https://github.com/deepmind/dsprites-dataset) dataset. 
 
+<img src="https://github.com/rubvber/C2PO/blob/main/img/active-dSprites-animation0.gif" width=250> <img src="https://github.com/rubvber/C2PO/blob/main/img/active-dSprites-animation1.gif" width=250>
+
+
+
+
 ## C2PO
 C2PO (or Continuous Control and Planning with Objects) is a recurrent DNN architecture for object-centric perception, action and control that is trained without supervision on raw RGB video frames. It consists of a world model component and a preference network, both of which interface with an object-structured latent representation of the environment. The world model performs perceptual inference, prediction and goal-directed planning. Perception consists of iterative amortized (variational) inference on a Gaussian Mixture model for individual video frames, linked together via a linearized dynamics model with Gaussian noise. These dynamics can be influenced by control actions that accelerate objects. The linearized dynamics model, combined with a latent representation in second-order generalized coordinates, allows for highly efficient prediction and planning, as both can be performed in closed form via linear projections. Planning requires that a goal or preferred state be supplied in the network's latent space, and this is the purpose of the preference network. It takes as input the current beliefs about object states, and outputs a predicted distribution over their preferred states, thus allowing the model to learn tasks defined by abstract rules.
 
