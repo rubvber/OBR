@@ -8,9 +8,8 @@ from argparse import ArgumentTypeError
 import re
 
 def main(args):
-    # pl.seed_everything(1235)
-    pl.seed_everything(args.random_seed)    
 
+    pl.seed_everything(args.random_seed)    
 
     if isinstance(args.gpus, list):
         if len(args.gpus)==1 and args.gpus[0]<0:

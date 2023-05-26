@@ -214,10 +214,8 @@ class C2PO(pl.LightningModule):
             train_num_iter=12,
             train_iter_per_timestep=4,                        
             sigma_chi=0.1,                        
-            init_percept_net_path=None,
-            init_action_net_path=None,
-            freeze_percept_net=False,
-            freeze_action_net=False,
+            init_percept_net_path=None,            
+            freeze_percept_net=False,            
             init_tau=1.0,
             ar_tau=3e-5, 
             min_tau=0.5,                       
@@ -251,9 +249,7 @@ class C2PO(pl.LightningModule):
         self.train_num_iter=train_num_iter
         self.train_iter_per_timestep=train_iter_per_timestep                
         self.init_percept_net_path = init_percept_net_path
-        self.init_action_net_path = init_action_net_path
-        self.freeze_percept_net = freeze_percept_net
-        self.freeze_action_net = freeze_action_net        
+        self.freeze_percept_net = freeze_percept_net        
         self.sigma_chi = sigma_chi
         self.init_tau = init_tau
         self.ar_tau = ar_tau                
@@ -287,6 +283,7 @@ class C2PO(pl.LightningModule):
             self.refine_net = percept_net.refine_net
             self.layer_norms = percept_net.layer_norms
             self.lambda0 = percept_net.lambda0            
+            self.action_net = percept_net.action_net
 
             if hasattr(percept_net, 'D'):
                 self.D = percept_net.D                                        
@@ -315,18 +312,7 @@ class C2PO(pl.LightningModule):
                 'action_grad': nn.LayerNorm((4), elementwise_affine=False),  
             })            
                     
-            self.D = nn.Parameter(torch.randn(2,self.n_latent)*self.D_init_sd)                                        
-        
-        if self.init_action_net_path is not None:
-            if self.init_percept_net_path==self.init_action_net_path:
-                #In this case we don't need to load again
-                init_action_net = percept_net                    
-            else:
-                init_action_net = C2PO.load_from_checkpoint(init_action_net_path, init_percept_net_path=None, init_action_net_path=None, init_goal_net_path=None, foo='blah')             
-                            
-            self.action_net = init_action_net.action_net
-            del init_action_net
-        else:             
+            self.D = nn.Parameter(torch.randn(2,self.n_latent)*self.D_init_sd)                                              
             self.action_net = ActionNet()                                
                 
         self.gumbel_tau={
@@ -348,8 +334,6 @@ class C2PO(pl.LightningModule):
             else:             
                 hidden_size=64
                 self.goal_net = GoalNet(n_latent, hidden_size)
-
-        if 'percept_net' in locals(): del percept_net
 
 
     def comb_rec(self, rec, mask):
