@@ -1,4 +1,4 @@
 TODO.txt
 *.cpython*
 C2PO_logs/*
-./*.png
+*.png
