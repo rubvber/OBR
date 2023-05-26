@@ -1,5 +1,4 @@
 import argparse
-from tkinter import Y
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from C2PO import C2PO 
@@ -8,12 +7,9 @@ from active_dsprites import active_dsprites
 from argparse import ArgumentTypeError
 import re
 
-
-
 def main(args):
-    # pl.seed_everything(1235)
-    pl.seed_everything(args.random_seed)    
 
+    pl.seed_everything(args.random_seed)    
 
     if isinstance(args.gpus, list):
         if len(args.gpus)==1 and args.gpus[0]<0:
@@ -73,10 +69,8 @@ def main(args):
         'train_iter_per_timestep': args.train_iter_per_timestep, 
         'n_latent': args.n_latent,         
         'sigma_chi': args.sigma_chi,                
-        'init_percept_net_path': args.init_percept_net_path,
-        'init_action_net_path': args.init_action_net_path,
-        'freeze_percept_net': args.freeze_percept_net,
-        'freeze_action_net': args.freeze_action_net,        
+        'init_percept_net_path': args.init_percept_net_path,        
+        'freeze_percept_net': args.freeze_percept_net,        
         'init_tau': args.init_tau,
         'ar_tau': args.ar_tau,
         'min_tau': args.min_tau,                
@@ -127,8 +121,8 @@ def main(args):
 
     model.all_calling_args = args
 
-    trainer = pl.Trainer(devices=gpus, accelerator="gpu", strategy='ddp' if len(gpus)>1 else None, precision=args.precision, max_epochs= 2000, callbacks=callbacks,
-        logger=pl.loggers.TensorBoardLogger('../C2PO_logs/'), gradient_clip_val=args.gradient_clip_val, gradient_clip_algorithm='norm', resume_from_checkpoint=ckpt_path,
+    trainer = pl.Trainer(devices=gpus, accelerator="gpu", strategy='ddp' if len(gpus)>1 else None, precision=args.precision, max_epochs=args.max_epochs, callbacks=callbacks,
+        logger=pl.loggers.TensorBoardLogger('./C2PO_logs/'), gradient_clip_val=args.gradient_clip_val, gradient_clip_algorithm='norm', resume_from_checkpoint=ckpt_path,
         accumulate_grad_batches= args.accumulate_grad_batches, track_grad_norm=2, num_nodes=1)
     
     trainer.fit(model, train_loader, val_loader)    
@@ -157,6 +151,7 @@ def parseNumList(string):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train IODINE")
 
+    parser.add_argument('--max_epochs', default=200, type=int, help="Maximum number of epochs to train for.")
     parser.add_argument('--K', default=4, type=int, help="Number of slots in the model")
     parser.add_argument('--data_str', default='3sprites-3frames', type=str, help='Identifier string to find (dsprites) data')    
     parser.add_argument('--resume_from_checkpoint', default=None, help='Checkpoint from which to resume training')
@@ -176,19 +171,17 @@ if __name__ == "__main__":
     parser.add_argument('--train_iter_per_timestep', default=4, type=int, help='How many refinement iterations to complete before adding another frame to the inference time window')    
     parser.add_argument('--n_latent', default=16, type=int, help='Number of variables in the latent space')
     parser.add_argument('--resume_overrideLR', default=False, type=str2bool, help='When resuming from checkpoint, load model weights and hyperparameters but override learning rate settings to those specified here.')        
-    parser.add_argument('--sigma_chi', default=0.1, type=float, help='Value of sigma_chi hyperparameter')
+    parser.add_argument('--sigma_chi', default=0.3, type=float, help='Value of sigma_chi hyperparameter')
     parser.add_argument('--load_model_path', default=None, type=str, help='Path of a model to load weights from. This is distinct from resume_from_checkpoint which also loads all hyperparameters and optimizer states.' + 
         'By contrast, load_model_path does not load hyperparameters or optimizer states. Hyperparameters will be set to their specified or default values.')        
     parser.add_argument('--init_tau', default=2.0, type=float, help='Value to initialize the tau parameter to, if action_net=True')
     parser.add_argument('--ar_tau', default=3e-6, type=float, help='Anneal rate for tau parameter, if action_net=True')
     parser.add_argument('--min_tau', default=0.5, type=float, help='Minimum value of tau parameter, if action_net=True')
-    parser.add_argument('--init_percept_net_path', default=None, type=str, help='Path to perception net, if None then decoder and refinement networks are initialized randomly. Do not use together with load_model_path or resume_from_checkpoint')
-    parser.add_argument('--init_action_net_path', default=None, type=str, help='Path to action net - see help for init_percept_net_path.')
+    parser.add_argument('--init_percept_net_path', default=None, type=str, help='Path to perception net, if None then decoder and refinement networks are initialized randomly. Do not use together with load_model_path or resume_from_checkpoint')    
     parser.add_argument('--freeze_percept_net', default=False, type=str2bool, help='Freeze parameters of the refine net and decoder')
-    parser.add_argument('--freeze_action_net', default=False, type=str2bool, help='Freeze parameters of the action net')    
     parser.add_argument('--random_seed', default=1235, type=int, help='Random seed')    
-    parser.add_argument('--D_init_sd', default=0.0, type=float, help='SD of Normal distribution used to initialize D matrix')    
-    parser.add_argument('--train_win_size', default=3, type=int, help='Size of the sliding inference window')
+    parser.add_argument('--D_init_sd', default=0.02, type=float, help='SD of Normal distribution used to initialize D matrix')    
+    parser.add_argument('--train_win_size', default=2, type=int, help='Size of the sliding inference window')
     parser.add_argument('--ad_num_frames', default=4, type=int, help='Number of frames to simulate in active-dsprites')
     parser.add_argument('--ad_val_num_frames', default=8, type=int, help='Number of frames to simulate in active-dsprites, for validation data')    
     parser.add_argument('--gradient_clip_val', default=5.0, type=float, help='Gradient clipping value')
@@ -204,12 +197,11 @@ if __name__ == "__main__":
     parser.add_argument('--with_goal_net', default=False, type=str2bool, help='Include goal net to learn transform from current to target states')
     parser.add_argument('--ad_rule_goal', default=None, type=str, help='Rule-based goal to sample from in active-dsprites')        
     parser.add_argument('--ad_rule_goal_actions', default=False, type=str2bool, help='Whether to generate actions towards goals in active-dsprites')
-    parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing an IODINE network state from which to load the goal net')
+    parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing a C2PO network state from which to load the goal net')
     
 
 
     args = parser.parse_args()
-    
-   
+      
     main(args)
 

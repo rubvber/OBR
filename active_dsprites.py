@@ -1,9 +1,6 @@
 import cairo, torch, random
 import numpy as np
-from scipy.stats import norm
 from torch.utils.data import Dataset, DataLoader
-from math import ceil, floor
-
 
 def heart(t):
     # Copied from https://github.com/deepmind/dsprites-dataset/issues/2
@@ -37,7 +34,7 @@ class active_dsprites(Dataset):
         a_sd = 4/64, #SD of action distribution        
         interactive = True, #Use the class in interactive mode
         N = 50000, #Size of dataset
-        rand_seed0 = 1234, #Offset for idx-dependent random seeds from which data are generated (for reproducibility)
+        rand_seed0 = 634, #Offset for idx-dependent random seeds from which data are generated (for reproducibility)
         num_frames = None, #If not running interactive, this is how many frames will be simulated
         action_frames = None, #If not running interactive, sample action at the end of this frame
         data = None, #If not running interactive, we can initialize an environment with specified data (a tuple of (sprite_data, bgcolor)). If left to None, data will be generated randomly
@@ -45,8 +42,6 @@ class active_dsprites(Dataset):
         include_action_fields = True,        
         pos_smp_method = 'uniform', #How to sample positions (can be 'uniform' or 'normal')
         pos_smp_stats  = (0.0, 1.0), #Statistics of distribution to sample positions from. For uniform, this is (min, max). For normal, this is (mean, sd).
-        use_legacy_action_timing = False,
-        sample_central_action_location = False, #Sample action locations near the center of the (visible) object
         include_bgd_action = True, #Include action on bgd pixel when sampling actions        
         bounding_actions = False,        
         rule_goal = None, #This can be set to a string that sets a rule-based goal that will be achieved by the end of the sequence
@@ -69,9 +64,7 @@ class active_dsprites(Dataset):
         self.include_masks = include_masks
         self.include_action_fields = include_action_fields        
         self.pos_smp_method = pos_smp_method
-        self.pos_smp_stats  = pos_smp_stats
-        self.use_legacy_action_timing = use_legacy_action_timing
-        self.sample_central_action_location = sample_central_action_location
+        self.pos_smp_stats  = pos_smp_stats        
         self.include_bgd_action = include_bgd_action        
         self.bounding_actions = bounding_actions
         self.rule_goal = rule_goal 
@@ -90,12 +83,7 @@ class active_dsprites(Dataset):
             assert isinstance(data, tuple) or isinstance(data, list), 'Input data should be tuple or list of (sprite_data, bgcolor)'
             self.sprite_data = data[0].view(-1,self.num_sprites,10)  
             self.bgcolor = data[1].view(-1)            
-            self.device=self.sprite_data.device
-
-        if self.sample_central_action_location:
-            self.xy_grid = torch.stack(torch.meshgrid(torch.arange(1,im_size+1, device=self.device), torch.arange(1,im_size+1, device=self.device), indexing='ij'),-1)
-
-        
+            self.device=self.sprite_data.device   
 
 
     def step(self, actions=None, do_not_update=False): 
@@ -107,6 +95,8 @@ class active_dsprites(Dataset):
 
         '''
         
+        new_sprite_data=self.sprite_data.clone()            
+
         if actions is not None:            
             
             assert actions.ndim==4, 'Action fields have incorrect dimensions'            
@@ -117,9 +107,7 @@ class active_dsprites(Dataset):
                 '''
                 _, self.curr_masks, _ = self.render()
                         
-            actions = torch.einsum('bijk,bljk->bil', self.curr_masks*1.0, actions)            
-            
-            new_sprite_data=self.sprite_data.clone()            
+            actions = torch.einsum('bijk,bljk->bil', self.curr_masks*1.0, actions)                        
             new_sprite_data[:,:,-2:] += actions #Increment velocity by acceleration
 
         new_sprite_data[:,:,6:8] += new_sprite_data[:,:,8:] #Increment position by velocity
@@ -250,20 +238,10 @@ class active_dsprites(Dataset):
                     this_mask = bg_masks[i]
 
                 if not this_mask.any().item(): continue
-                
+                              
                 indices = aw_fun(this_mask)
-
-                if self.sample_central_action_location and k<self.num_sprites:
-                    num_pix = (this_mask*1.0).sum()
-                    masked_xy = (this_mask.unsqueeze(-1)*1.0*self.xy_grid)
-                    mean_pos = masked_xy.sum((0,1),True)/num_pix
-                    dist_from_mean = ((self.xy_grid-mean_pos)**2).sum(-1).sqrt() 
-                    _, order = torch.sort(dist_from_mean[indices[:,0],indices[:,1]])
-                    index = indices[order[0]]                    
-                else:
-                    indices = aw_fun(this_mask)
-                    pick = random.randint(0, indices.shape[0]-1)
-                    index = indices[pick]
+                pick = random.randint(0, indices.shape[0]-1)
+                index = indices[pick]
 
                 action_fields[i, :, index[0], index[1]] = obj_actions[i,k]
 
@@ -427,7 +405,7 @@ class active_dsprites(Dataset):
     def initialize_environment(self, randseed=None, batch_size=1):
         if randseed is not None: torch.manual_seed(randseed)
 
-        cval = torch.tensor([0, 63, 127, 191, 255], device=self.device)
+        cval = torch.tensor([0, 63, 67, 191, 255], device=self.device)
         bgcolor = cval[torch.randint(0, len(cval), (1,), device=self.device)]
         
         
@@ -473,66 +451,48 @@ class active_dsprites(Dataset):
 
 
 if __name__ =="__main__":
-    
-    # # Non-interactive mode (dataset/dataloader behavior):
-    # ad_dataset = active_dsprites(        
-    #     interactive=False,
-    #     num_frames=12,
-    #     action_frames=(2,),         
-    #     bounding_actions=True                
-    # )
-         
-    # train_loader = DataLoader(ad_dataset, batch_size=32)
-    # dataiter = iter(train_loader)
-    # ims, masks, action_fields, _ = dataiter.next()
+    #Example code for dataset and environment (openAI gym-like) behavior
 
-    # # Interactive mode (environment behavior):
-    # ad_dataset = active_dsprites(interactive=True)        
-    # train_loader = DataLoader(ad_dataset, batch_size=32)
-    # dataiter = iter(train_loader)
-    # env_data = dataiter.next()
-
-    # env = active_dsprites(data=env_data, include_prior_pref=False)
-    # frame0_ims, frame0_masks, _ = env.render()
-    # action_fields = env.get_random_action()
-    # env.step(action_fields)
-    # frame1_ims, frame1_masks, _ = env.render()
-
-    
-    # # Interactive mode (environment behavior):
-    # ad_dataset = active_dsprites(interactive=True)
-    # train_loader = DataLoader(ad_dataset, batch_size=32)
-    # dataiter = iter(train_loader)
-    # env_data = dataiter.next()
-
-    # env = active_dsprites(data=env_data, bounding_events=True, include_prior_pref=False)
-    # frame0_ims, frame0_masks, _ = env.render()
-    # for i in range(100):
-    #     action_fields = env.get_random_action()
-    #     env.step(action_fields)
-    #     frame1_ims, frame1_masks, _ = env.render()
-
+    from PIL import Image
+    from torchvision.utils import make_grid
 
     # Non-interactive mode (dataset/dataloader behavior):
     ad_dataset = active_dsprites(        
         interactive=False,
-        num_frames=12,
-        action_frames=(2,4,6,8),         
-        bounding_actions=True,
-        rule_goal='HeartXORSquareLR+TMB',
-        rule_goal_actions='end',
-        rand_seed0=1234
+        num_frames=6,
+        action_frames=(2,4),         
+        bounding_actions=True,        
+        rand_seed0=1234,
     )
-
-    ad_dataset.initialize_environment(batch_size=16)
          
-    train_loader = DataLoader(ad_dataset, batch_size=32)
+    train_loader = DataLoader(ad_dataset, batch_size=16)
     dataiter = iter(train_loader)
-    ims, masks, action_fields, _ = dataiter.next()
+    ims, _, _ = dataiter.next()
+        
+    Image.fromarray((make_grid(ims.view(16*6,3,64,64), nrow=6).permute((1,2,0))*255).to(torch.uint8).numpy()).save('ad_ex_dataset.png')
 
-    from PIL import Image
-    from torchvision.utils import make_grid
+    # Interactive model (environment/gym-like behavior):    
+    ad_dataset = active_dsprites(interactive=True, rand_seed0=1234)
+    train_loader = DataLoader(ad_dataset, batch_size=16) #This is a bit clunky, but it allows training to work the same way as everything still goes through a dataloader
+    dataiter = iter(train_loader)
+    ad_data = dataiter.next()
+    ad_env = active_dsprites(interactive=True, data=ad_data)
     
-    Image.fromarray((make_grid(ims.view(32*12,3,64,64), nrow=12).permute((1,2,0))*255).to(torch.uint8).numpy()).save('foo.png')
+    ims = torch.zeros_like(ims)    
+    for t in range(6):
+        ims[:,t], _ = ad_env.render()
+        if t+1 in (2,4):
+            action_field = ad_env.get_random_action()
+        else:
+            action_field = None
+        if t<11:
+            ad_env.step(action_field)
+
+    Image.fromarray((make_grid(ims.view(16*6,3,64,64), nrow=6).permute((1,2,0))*255).to(torch.uint8).numpy()).save('ad_ex_env.png')
+
+        
+
+
+
 
 
