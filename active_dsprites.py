@@ -1,9 +1,6 @@
 import cairo, torch, random
 import numpy as np
-from scipy.stats import norm
 from torch.utils.data import Dataset, DataLoader
-from math import ceil, floor
-
 
 def heart(t):
     # Copied from https://github.com/deepmind/dsprites-dataset/issues/2

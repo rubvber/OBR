@@ -1,5 +1,4 @@
 import argparse
-from tkinter import Y
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from C2PO import C2PO 
@@ -7,8 +6,6 @@ from torch.utils.data import DataLoader
 from active_dsprites import active_dsprites
 from argparse import ArgumentTypeError
 import re
-
-
 
 def main(args):
     # pl.seed_everything(1235)
