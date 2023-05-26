@@ -16,11 +16,9 @@ Code for the C2PO architecture and active dSprites environment.
 See also the requirements.txt file which may be used to set up a conda environment.
 
 ## Active dSprites
-Active dSprites is a simple multi-object environment with continuous dynamics and control. Objects in active dSprites are a recreation of those in the [dSprites](https://github.com/deepmind/dsprites-dataset) dataset. 
+Active dSprites is a simple multi-object environment with continuous dynamics and control. Objects in active dSprites are a recreation of those in the [dSprites](https://github.com/deepmind/dsprites-dataset) dataset. Objects have linear dynamics that can be perturbed by accelerations specified as "action fields". An action field is an image-sized tensor that, for each pixel, contains an (x,y) acceleration vector. Objects receive a total acceleration that is the sum of the accelerations at their visible pixels. In practice, we typically restrict ourselves to one acceleration per object. In the absence of such accelerations, objects maintain a constant velocity (i.e. there are no friction forces in the environment). Objects do not collide.
 
 <img src="https://github.com/rubvber/C2PO/blob/main/img/active-dSprites-animation0.gif" width=250> <img src="https://github.com/rubvber/C2PO/blob/main/img/active-dSprites-animation1.gif" width=250>
-
-
 
 
 ## C2PO
