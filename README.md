@@ -39,3 +39,8 @@ The first option would train on 4 gpus with indices 3, 4, 5 and 6 within your se
 
 `python C2PO_trainer.py --gpus -1`
 
+Given a trained world model, it is possible to train a preference network on top of this to learn a task. For instance:
+
+<code>python C2PO_trainer.py --gpus -4 --init_percept_net <path_to_checkpoint_file> --freeze_percept_net True --with_goal_net True \ <br>
+&emsp;&emsp;&emsp; --ad_rule_goal HeartLR+TMB --ad_rule_goal_actions True --ad_num_frames 12 --ad_val_num_frames 12 \ <br>
+&emsp;&emsp;&emsp; --val_predict 0 --action_frames 2 4 6 8 </code>
