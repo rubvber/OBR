@@ -101,13 +101,13 @@ class GoalNet(nn.Module):
         
         x0 = x
         x = self.encoder(x.view(N*K, n_latent))
-        if self.with_context:
-            ctx = self.ctx_layer(x)
-            ctx = ctx.view(-1, K, self.hidden_size).mean(1, keepdim=True) #Unfold slots and average over them
-            ctx = ctx.expand(N, K, n_latent)            
-            x = x.view(-1, K, self.hidden_size) #Unfold slots so we can concatenate
-            x = torch.cat((x,ctx), -1)
-            x = x.view(-1, self.hidden_size*2)
+        
+        ctx = self.ctx_layer(x)
+        ctx = ctx.view(-1, K, self.hidden_size).mean(1, keepdim=True) #Unfold slots and average over them
+        ctx = ctx.expand(N, K, n_latent)            
+        x = x.view(-1, K, self.hidden_size) #Unfold slots so we can concatenate
+        x = torch.cat((x,ctx), -1)
+        x = x.view(-1, self.hidden_size*2)
         
         x = self.decoder(x)
         x_lat_dim = n_latent        
