@@ -6,6 +6,10 @@ from torch.utils.data import DataLoader
 from active_dsprites import active_dsprites
 from argparse import ArgumentTypeError
 import re
+import sys
+
+sys.path.append('../AttentionExperiments/src/')
+from active_3dsprites import active_3dsprites_dataset
 
 def main(args):
 
@@ -22,30 +26,47 @@ def main(args):
         else:
             gpus = (args.gpus,)
 
-    active_dsprites_train = active_dsprites(        
-        N=256 if args.debug_run else 50000,
-        num_frames=args.ad_num_frames,
-        action_frames=args.action_frames,
-        interactive=args.interactive,
-        pos_smp_stats=(0.2,0.8),            
-        include_bgd_action=args.include_bgd_action,        
-        bounding_actions=args.ad_bounding_actions,
-        rule_goal = args.ad_rule_goal,
-        rule_goal_actions= args.ad_rule_goal_actions,        
-        )
-    active_dsprites_val = active_dsprites(
-        include_masks=True,         
-        N=64 if args.debug_run else 10000,
-        interactive=args.interactive,
-        rand_seed0=50000+1234+4242, #As we want to avoid duplicating any indices from the training set, we need to add its randseed0 and its size (plus some safety margin)
-        num_frames=args.ad_val_num_frames,
-        action_frames=args.action_frames,
-        pos_smp_stats=(0.2,0.8),         
-        include_bgd_action=args.include_bgd_action,                
-        bounding_actions=args.ad_bounding_actions if args.val_predict==0 else False,
-        rule_goal = args.ad_rule_goal,
-        rule_goal_actions= args.ad_rule_goal_actions,        
-        ) 
+    if args.threeD:
+        active_dsprites_train = active_3dsprites_dataset({
+            'N': 256 if args.debug_run else 50000,
+            'episode_length': args.ad_num_frames,
+            'action_frames': args.action_frames,
+            'interactive': args.interactive,
+            'gpus': gpus,         
+        })
+        active_dsprites_val = active_3dsprites_dataset({
+            'N': 64 if args.debug_run else 10000,
+            'episode_length': args.ad_val_num_frames,
+            'action_frames': args.action_frames,
+            'interactive': args.interactive,
+            'gpus': gpus,         
+        })
+
+    else:
+        active_dsprites_train = active_dsprites(        
+            N=256 if args.debug_run else 50000,
+            num_frames=args.ad_num_frames,
+            action_frames=args.action_frames,
+            interactive=args.interactive,
+            pos_smp_stats=(0.2,0.8),            
+            include_bgd_action=args.include_bgd_action,        
+            bounding_actions=args.ad_bounding_actions,
+            rule_goal = args.ad_rule_goal,
+            rule_goal_actions= args.ad_rule_goal_actions,        
+            )
+        active_dsprites_val = active_dsprites(
+            include_masks=True,         
+            N=64 if args.debug_run else 10000,
+            interactive=args.interactive,
+            rand_seed0=50000+1234+4242, #As we want to avoid duplicating any indices from the training set, we need to add its randseed0 and its size (plus some safety margin)
+            num_frames=args.ad_val_num_frames,
+            action_frames=args.action_frames,
+            pos_smp_stats=(0.2,0.8),         
+            include_bgd_action=args.include_bgd_action,                
+            bounding_actions=args.ad_bounding_actions if args.val_predict==0 else False,
+            rule_goal = args.ad_rule_goal,
+            rule_goal_actions= args.ad_rule_goal_actions,        
+            ) 
 
     
     if args.val_batch_size==None:
@@ -83,6 +104,7 @@ def main(args):
         'num_mask_samples': args.num_mask_samples,                
         'with_goal_net': args.with_goal_net,                    
         'init_goal_net_path': args.init_goal_net_path,        
+        'threeD': args.threeD,
     }
 
 
@@ -166,7 +188,7 @@ if __name__ == "__main__":
     parser.add_argument('--val_predict', default=4, type=int, help='Number of frames to predict ahead at validation (output will be logged as images). If set to 0 no prediction is generated at all.')    
     parser.add_argument('--update_vars', default=0.0, type=float, help='Coefficient by which image and prediction variances are updated after each batch. Coefficient is the weight on the current batch. If 0, then no update is done.')
     parser.add_argument('--reduceLR_factor', default=0.0, type=float, help='Reduce LR by this factor when it hits a plateau in the validation loss (0 means no LR reduction)')
-    parser.add_argument('--reduceLR_patience', default=10, type=int, help='Reduce LR after validatoin loss hasn''t improved for this many epochs. Ignored if reduceLR_factor=0.')
+    parser.add_argument('--reduceLR_patience', default=10, type=int, help='Reduce LR after validation loss hasn''t improved for this many epochs. Ignored if reduceLR_factor=0.')
     parser.add_argument('--reduceLR_minlr', default=3e-6, type=float, help='Lower bound on (absolute) learning rate for LR scheduler. Ignored if reduceLR_factor=0.')        
     parser.add_argument('--train_iter_per_timestep', default=4, type=int, help='How many refinement iterations to complete before adding another frame to the inference time window')    
     parser.add_argument('--n_latent', default=16, type=int, help='Number of variables in the latent space')
@@ -198,10 +220,13 @@ if __name__ == "__main__":
     parser.add_argument('--ad_rule_goal', default=None, type=str, help='Rule-based goal to sample from in active-dsprites')        
     parser.add_argument('--ad_rule_goal_actions', default=False, type=str2bool, help='Whether to generate actions towards goals in active-dsprites')
     parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing a C2PO network state from which to load the goal net')
+    parser.add_argument('--threeD', default=False, type=str2bool, help='Use 3-D dataset')
     
-
-
     args = parser.parse_args()
-      
+
+    if True:
+        args.threeD = True
+        args.debug_run = True
+        args.gpus = [1,]
     main(args)
 

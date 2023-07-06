@@ -176,11 +176,11 @@ class RefineNet(nn.Module):
         return self.fc_out(h), h, c 
 
 class ActionNet(nn.Module):
-    def __init__(self, vec_input_size=4+4+2):
+    def __init__(self, vec_input_size=4+4+2, out_size=4):
         super().__init__()
 
         self.lstm = nn.LSTMCell(vec_input_size, 32) 
-        self.fc_out = nn.Linear(32, 4)
+        self.fc_out = nn.Linear(32, out_size)
 
     def forward(self, x, h, c):
         
@@ -230,6 +230,7 @@ class C2PO(pl.LightningModule):
             with_goal_net = False,            
             init_goal_net_path = None,            
             heart_becomes_square=0,
+            threeD = False,
         ):            
 
             
@@ -265,12 +266,17 @@ class C2PO(pl.LightningModule):
         self.with_goal_net = with_goal_net        
         self.init_goal_net_path = init_goal_net_path        
         self.heart_becomes_square = heart_becomes_square
+        self.threeD = threeD
         
         self.save_hyperparameters()
         
         self.im_prec = self.im_var**-1 
         self.register_buffer('h0', torch.zeros(1, 128))       
         self.tot_n_latent = n_latent*2*2 #Total number of latent entries: n_latent times two because we have state and derivative, and then whole thing times two again because we have mu and logsd for all (or times three if we also output autocorrs)
+
+        self.action_dim = 3 if threeD else 2 #We can change this logic later if we also need to deal with rotations
+
+        assert not (threeD and interactive), "Combination interactive + threeD not yet implemented"
 
         if self.init_percept_net_path is not None:            
             '''
@@ -309,11 +315,11 @@ class C2PO(pl.LightningModule):
                 'mask_grad': nn.LayerNorm((1,64,64), elementwise_affine=False),
                 'post_grad': nn.LayerNorm((self.tot_n_latent), elementwise_affine=False), 
                 'pix_like': nn.LayerNorm((1,64,64), elementwise_affine=False),
-                'action_grad': nn.LayerNorm((4), elementwise_affine=False),  
+                'action_grad': nn.LayerNorm((self.action_dim*2), elementwise_affine=False),  
             })            
                     
-            self.D = nn.Parameter(torch.randn(2,self.n_latent)*self.D_init_sd)                                              
-            self.action_net = ActionNet()                                
+            self.D = nn.Parameter(torch.randn(self.action_dim,self.n_latent)*self.D_init_sd)                                              
+            self.action_net = ActionNet(vec_input_size=5*self.action_dim, out_size=2*self.action_dim)                                
                 
         self.gumbel_tau={
                 'curr_tau': 1.0,
@@ -408,9 +414,9 @@ class C2PO(pl.LightningModule):
             var_prime_pred = var_prime_prev
             
             if curr_action_lambda is not None:
-                mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1)            
-                mu_prime_pred = mu_prime_pred + (self.D.view(1,1,1,2,-1)*mu_action.unsqueeze(-1)).sum(-2)             
-                var_prime_pred = var_prime_pred + (self.D.view(1,1,1,2,-1)**2*logsd_action.exp().unsqueeze(-1)**2).sum(-2)                
+                mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1) #Here 2 is appropriate (rather than self.action_dim) as we're just splitting the tensor in 2            
+                mu_prime_pred = mu_prime_pred + (self.D.view(1,1,1,self.action_dim,-1)*mu_action.unsqueeze(-1)).sum(-2)             
+                var_prime_pred = var_prime_pred + (self.D.view(1,1,1,self.action_dim,-1)**2*logsd_action.exp().unsqueeze(-1)**2).sum(-2)                
         
             if curr_lambda is None:
                 # If no curr_lamdba was supplied, then we'll use the predicted derivative to produce the state prediction
@@ -756,7 +762,7 @@ class C2PO(pl.LightningModule):
             _,C,H,W = x.shape[:]
             x=x.view(N,1,C,H,W)
             true_masks=true_masks.view(N,1,H,W)
-            action_fields = torch.zeros(N,1,1,2,H,W, device=x.device)
+            action_fields = torch.zeros(N,1,1,self.action_dim,H,W, device=x.device)
             prior_pref = prior_pref.view(N,1)        
 
             true_states = env.sprite_data.unsqueeze(1)    
@@ -776,15 +782,15 @@ class C2PO(pl.LightningModule):
                 self.planning_horizon=5
             onevec = torch.ones(self.planning_horizon, device=x.device)    
             d = torch.arange(1, self.planning_horizon+1, device=x.device)
-            row_idx, col_idx = torch.meshgrid(torch.arange(1, self.planning_horizon*2+1, device=x.device),torch.arange(1, self.planning_horizon+1, device=x.device), indexing='ij')
+            row_idx, col_idx = torch.meshgrid(torch.arange(1, self.planning_horizon*self.action_dim+1, device=x.device),torch.arange(1, self.planning_horizon+1, device=x.device), indexing='ij')
             omega_d = torch.max(torch.tensor(0, device=x.device), (row_idx+1)/2-col_idx+1).to(torch.int)*(row_idx%2) + (col_idx<=(row_idx/2))*(1-row_idx%2)                        
             Ww = torch.kron(omega_d, self.D.T.contiguous()) #Just calling this Ww since we already have a W                
    
         if action_fields is not None and not self.interactive:        
-            action_fields = action_fields.view(N,maxF,1,2,H,W) #Insert the slot dimension 
+            action_fields = action_fields.view(N,maxF,1,self.action_dim,H,W) #Insert the slot dimension 
 
         
-        init_action_lambda = torch.zeros(N,1,K,4, device=x.device, requires_grad=True)
+        init_action_lambda = torch.zeros(N,1,K,2*self.action_dim, device=x.device, requires_grad=True)
         init_action_h = torch.zeros(N,1,K,32, device=x.device)
         init_action_c = torch.zeros_like(init_action_h)
 
@@ -841,7 +847,7 @@ class C2PO(pl.LightningModule):
                       
                 if prev_win_end < win_end:                             
                     exp_action = (iter_out_dict['mask']['prob'][:,(-1,)]*this_action_fields[:,(-1,)]).sum((4,5))
-                    new_init_action_lambda = torch.cat((exp_action, torch.zeros((N,1,K,2), device=x.device, requires_grad=True)),-1)
+                    new_init_action_lambda = torch.cat((exp_action, torch.zeros((N,1,K,self.action_dim), device=x.device, requires_grad=True)),-1)
                     init_action_lambda = torch.cat((iter_out_dict['final_action_lambda'][:,new_win_idx_in_old_win], new_init_action_lambda),1)
                     init_action_h = torch.cat((iter_out_dict['final_action_h'][:,new_win_idx_in_old_win], torch.zeros(N,1,K,32, device=x.device)),1)
                     init_action_c = torch.cat((iter_out_dict['final_action_c'][:,new_win_idx_in_old_win], torch.zeros(N,1,K,32, device=x.device)),1)
@@ -919,7 +925,7 @@ class C2PO(pl.LightningModule):
                         mu_curr, _ = torch.split(iter_out_dict['final_lambda'][:,-1], self.n_latent*2, dim=-1)
                         _, mu_curr_prime = torch.chunk(mu_curr, 2, -1)                            
                         if self.with_goal_net:
-                            obj_actions = torch.zeros(N,K,self.planning_horizon*2, device=x.device)
+                            obj_actions = torch.zeros(N,K,self.planning_horizon*self.action_dim, device=x.device)
                             goal_lambda = self.goal_net(iter_out_dict['final_lambda'][:,-1].contiguous())                                                            
                             all_pref_lambdas[:,win_pos] = goal_lambda
 
@@ -931,8 +937,8 @@ class C2PO(pl.LightningModule):
                                 for k in range(self.K):
                                     L = torch.diag(torch.kron(onevec,(logsd_pref[i,k]*-2).exp()))
                                     WtL = Ww.T@L
-                                    WLWiWL = torch.inverse((WtL@Ww + self.lambda_a*torch.eye(self.planning_horizon*2,device=Ww.device)).to(torch.float32))@WtL 
-                                    obj_actions[i,k] = (WLWiWL.view(1,1,self.planning_horizon*2,-1)* \
+                                    WLWiWL = torch.inverse((WtL@Ww + self.lambda_a*torch.eye(self.planning_horizon*self.action_dim,device=Ww.device)).to(torch.float32))@WtL 
+                                    obj_actions[i,k] = (WLWiWL.view(1,1,self.planning_horizon*self.action_dim,-1)* \
                                         (torch.kron(onevec.view(1,1,-1), mu_pref[i,k]-mu_curr[i,k]) - \
                                         torch.kron(d.view(1,1,-1), torch.cat((mu_curr_prime[i,k], torch.zeros_like(mu_curr_prime[i,k])),-1))).unsqueeze(-2)).sum(-1)
 
@@ -943,12 +949,12 @@ class C2PO(pl.LightningModule):
                                 _, idx = torch.sort(curr_mask[i,k], descending=True)
                                 for j in range(len(idx)):
                                     if action_field[i,0,idx[j]]==0:
-                                        action_field[i,:,idx[j]] = obj_actions[i,k,:2]/H #Take the first action in the planned sequence. Divide by image size because it is currently in pixels and env.step() expects it as a fraction of image size
+                                        action_field[i,:,idx[j]] = obj_actions[i,k,:self.action_dim]/H #Take the first action in the planned sequence. Divide by image size because it is currently in pixels and env.step() expects it as a fraction of image size
                                         break
-                        action_field = action_field.view(N,2,H,W)
+                        action_field = action_field.view(N,self.action_dim,H,W)
 
                 else:
-                    action_field = torch.zeros(N,2,H,W,device=x.device)
+                    action_field = torch.zeros(N,self.action_dim,H,W,device=x.device)
                                 
                 env.step(action_field.detach())
                 if self.heart_becomes_square>1 and win_pos+1==self.heart_becomes_square:                    
@@ -961,7 +967,7 @@ class C2PO(pl.LightningModule):
                 im,true_mask,this_pref = env.render()                
                 x = torch.cat((x,im.unsqueeze(1)), 1)
                 true_states = torch.cat((true_states, env.sprite_data.unsqueeze(1)), 1)
-                action_fields = torch.cat((action_fields,action_field.view(N,1,1,2,H,W)*H), 1) #Multiply by image size because we work in pixels for legacy reasons. Should probably make everything consistent in future.
+                action_fields = torch.cat((action_fields,action_field.view(N,1,1,self.action_dim,H,W)*H), 1) #Multiply by image size because we work in pixels for legacy reasons. Should probably make everything consistent in future.
                 prior_pref = torch.cat((prior_pref, this_pref.view(N,1)), 1)
                 '''
                 The action fields we get from get_random_action are in coordinates of [0,1] rather than the pixel coordinates we get from getitem. Ideally we would
