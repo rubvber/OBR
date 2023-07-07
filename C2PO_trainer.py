@@ -26,56 +26,15 @@ def main(args):
         else:
             gpus = (args.gpus,)
 
-    if args.threeD:
-        active_dsprites_train = active_3dsprites_dataset({
-            'N': 256 if args.debug_run else 50000,
-            'episode_length': args.ad_num_frames,
-            'action_frames': args.action_frames,
-            'interactive': args.interactive,
-            'gpus': gpus,         
-        })
-        active_dsprites_val = active_3dsprites_dataset({
-            'N': 64 if args.debug_run else 10000,
-            'episode_length': args.ad_val_num_frames,
-            'action_frames': args.action_frames,
-            'interactive': args.interactive,
-            'gpus': gpus,         
-        })
-
-    else:
-        active_dsprites_train = active_dsprites(        
-            N=256 if args.debug_run else 50000,
-            num_frames=args.ad_num_frames,
-            action_frames=args.action_frames,
-            interactive=args.interactive,
-            pos_smp_stats=(0.2,0.8),            
-            include_bgd_action=args.include_bgd_action,        
-            bounding_actions=args.ad_bounding_actions,
-            rule_goal = args.ad_rule_goal,
-            rule_goal_actions= args.ad_rule_goal_actions,        
-            )
-        active_dsprites_val = active_dsprites(
-            include_masks=True,         
-            N=64 if args.debug_run else 10000,
-            interactive=args.interactive,
-            rand_seed0=50000+1234+4242, #As we want to avoid duplicating any indices from the training set, we need to add its randseed0 and its size (plus some safety margin)
-            num_frames=args.ad_val_num_frames,
-            action_frames=args.action_frames,
-            pos_smp_stats=(0.2,0.8),         
-            include_bgd_action=args.include_bgd_action,                
-            bounding_actions=args.ad_bounding_actions if args.val_predict==0 else False,
-            rule_goal = args.ad_rule_goal,
-            rule_goal_actions= args.ad_rule_goal_actions,        
-            ) 
+    
 
     
     if args.val_batch_size==None:
         val_batch_size=args.batch_size
     else:
         val_batch_size=args.val_batch_size
-
-    train_loader = DataLoader(active_dsprites_train, args.batch_size, num_workers=4, persistent_workers=True, drop_last=True, pin_memory=True) 
-    val_loader = DataLoader(active_dsprites_val, val_batch_size, num_workers=4, persistent_workers=True, drop_last=True, pin_memory=True)
+    
+    
     
     pass_args = {        
         'K': 4,        
@@ -146,6 +105,55 @@ def main(args):
     trainer = pl.Trainer(devices=gpus, accelerator="gpu", strategy='ddp' if len(gpus)>1 else None, precision=args.precision, max_epochs=args.max_epochs, callbacks=callbacks,
         logger=pl.loggers.TensorBoardLogger('./C2PO_logs/'), gradient_clip_val=args.gradient_clip_val, gradient_clip_algorithm='norm', resume_from_checkpoint=ckpt_path,
         accumulate_grad_batches= args.accumulate_grad_batches, track_grad_norm=2, num_nodes=1)
+        
+
+    if args.threeD:
+        active_dsprites_train = active_3dsprites_dataset({
+            'N': 256 if args.debug_run else 50000,
+            'episode_length': args.ad_num_frames,
+            'action_frames': args.action_frames,
+            'interactive': args.interactive,
+            'gpus': gpus[trainer.global_rank],         
+        })
+        active_dsprites_val = active_3dsprites_dataset({
+            'N': 128 if args.debug_run else 10000,
+            'episode_length': args.ad_val_num_frames,
+            'action_frames': args.action_frames,
+            'interactive': args.interactive,
+            'gpus': gpus[trainer.global_rank],         
+        })
+
+    else:
+        active_dsprites_train = active_dsprites(        
+            N=256 if args.debug_run else 50000,
+            num_frames=args.ad_num_frames,
+            action_frames=args.action_frames,
+            interactive=args.interactive,
+            pos_smp_stats=(0.2,0.8),            
+            include_bgd_action=args.include_bgd_action,        
+            bounding_actions=args.ad_bounding_actions,
+            rule_goal = args.ad_rule_goal,
+            rule_goal_actions= args.ad_rule_goal_actions,        
+            )
+        active_dsprites_val = active_dsprites(
+            include_masks=True,         
+            N=64 if args.debug_run else 10000,
+            interactive=args.interactive,
+            rand_seed0=50000+1234+4242, #As we want to avoid duplicating any indices from the training set, we need to add its randseed0 and its size (plus some safety margin)
+            num_frames=args.ad_val_num_frames,
+            action_frames=args.action_frames,
+            pos_smp_stats=(0.2,0.8),         
+            include_bgd_action=args.include_bgd_action,                
+            bounding_actions=args.ad_bounding_actions if args.val_predict==0 else False,
+            rule_goal = args.ad_rule_goal,
+            rule_goal_actions= args.ad_rule_goal_actions,        
+            ) 
+    
+    train_loader = DataLoader(active_dsprites_train, args.batch_size, num_workers=2 if args.threeD else 4, 
+                              persistent_workers=False if args.threeD else True, drop_last=True, pin_memory=False if args.threeD else True) 
+    val_loader = DataLoader(active_dsprites_val, val_batch_size, num_workers=2 if args.threeD else 4,
+                              persistent_workers=False if args.threeD else True, drop_last=True, pin_memory=False if args.threeD else True)
+
     
     trainer.fit(model, train_loader, val_loader)    
     
@@ -224,9 +232,9 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    if True:
+    if False:
         args.threeD = True
         args.debug_run = True
-        args.gpus = [1,]
+        args.gpus = [1,2]
     main(args)
 
