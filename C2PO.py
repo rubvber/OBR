@@ -231,6 +231,7 @@ class C2PO(pl.LightningModule):
             init_goal_net_path = None,            
             heart_becomes_square=0,
             threeD = False,
+            with_rotation = False,
         ):            
 
             
@@ -267,6 +268,7 @@ class C2PO(pl.LightningModule):
         self.init_goal_net_path = init_goal_net_path        
         self.heart_becomes_square = heart_becomes_square
         self.threeD = threeD
+        self.with_rotation = with_rotation
         
         self.save_hyperparameters()
         
@@ -274,7 +276,11 @@ class C2PO(pl.LightningModule):
         self.register_buffer('h0', torch.zeros(1, 128))       
         self.tot_n_latent = n_latent*2*2 #Total number of latent entries: n_latent times two because we have state and derivative, and then whole thing times two again because we have mu and logsd for all (or times three if we also output autocorrs)
 
-        self.action_dim = 3 if threeD else 2 #We can change this logic later if we also need to deal with rotations
+        if threeD:
+            self.action_dim = 6 if with_rotation else 3
+        else:
+            assert not with_rotation, 'Combination 2D + rotations not yet implemented'
+            self.action_dim = 2 
 
         assert not (threeD and interactive), "Combination interactive + threeD not yet implemented"
 

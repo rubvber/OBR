@@ -64,7 +64,10 @@ def main(args):
         'with_goal_net': args.with_goal_net,                    
         'init_goal_net_path': args.init_goal_net_path,        
         'threeD': args.threeD,
+        'with_rotation': args.with_rotation,
     }
+
+    assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
 
 
     assert not ((args.resume_from_checkpoint or args.load_model_path is not None) and args.init_percept_net_path is not None), 'Cannot combine init_percept_path with resume_from_checkpoint or load_model_path'
@@ -114,13 +117,15 @@ def main(args):
             'action_frames': args.action_frames,
             'interactive': args.interactive,
             'gpus': gpus[trainer.global_rank],         
+            'with_rotation': args.with_rotation,
         })
         active_dsprites_val = active_3dsprites_dataset({
             'N': 128 if args.debug_run else 10000,
             'episode_length': args.ad_val_num_frames,
             'action_frames': args.action_frames,
             'interactive': args.interactive,
-            'gpus': gpus[trainer.global_rank],         
+            'gpus': gpus[trainer.global_rank],  
+            'with_rotation': args.with_rotation,
         })
 
     else:
@@ -229,12 +234,15 @@ if __name__ == "__main__":
     parser.add_argument('--ad_rule_goal_actions', default=False, type=str2bool, help='Whether to generate actions towards goals in active-dsprites')
     parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing a C2PO network state from which to load the goal net')
     parser.add_argument('--threeD', default=False, type=str2bool, help='Use 3-D dataset')
+    parser.add_argument('--with_rotation', default=False, type=str2bool, help='Include rotations in environment? (Currently only implemented for 3D.)')
     
     args = parser.parse_args()
 
     if False:
         args.threeD = True
         args.debug_run = True
-        args.gpus = [1,2]
+        args.gpus = [0,]        
+        args.reduceLR_factor = 0.333333
+        args.with_rotation = True
     main(args)
 
