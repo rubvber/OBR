@@ -153,10 +153,16 @@ def main(args):
             rule_goal = args.ad_rule_goal,
             rule_goal_actions= args.ad_rule_goal_actions,        
             ) 
+        
+    if args.num_workers is None:
+        num_workers=2 if args.threeD else 4
+    else:   
+        num_workers=args.num_workers
+        
     
-    train_loader = DataLoader(active_dsprites_train, args.batch_size, num_workers=2 if args.threeD else 4, 
+    train_loader = DataLoader(active_dsprites_train, args.batch_size, num_workers=num_workers, 
                               persistent_workers=False if args.threeD else True, drop_last=True, pin_memory=False if args.threeD else True) 
-    val_loader = DataLoader(active_dsprites_val, val_batch_size, num_workers=2 if args.threeD else 4,
+    val_loader = DataLoader(active_dsprites_val, val_batch_size, num_workers=num_workers,
                               persistent_workers=False if args.threeD else True, drop_last=True, pin_memory=False if args.threeD else True)
 
     
@@ -235,6 +241,7 @@ if __name__ == "__main__":
     parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing a C2PO network state from which to load the goal net')
     parser.add_argument('--threeD', default=False, type=str2bool, help='Use 3-D dataset')
     parser.add_argument('--with_rotation', default=False, type=str2bool, help='Include rotations in environment? (Currently only implemented for 3D.)')
+    parser.add_argument('--num_workers', default=None, type = int)
     
     args = parser.parse_args()
 
