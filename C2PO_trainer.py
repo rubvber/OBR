@@ -253,8 +253,11 @@ if __name__ == "__main__":
     if False:
         args.threeD = True
         args.debug_run = True
-        args.gpus = [0,]        
+        args.gpus = [1,]        
         args.reduceLR_factor = 0.333333
         args.with_rotation = True
+        args.network_config = 'greffCLEVR'
+        args.n_latent= 32
+        args.val_batch_size=16
     main(args)
 

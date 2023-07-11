@@ -177,7 +177,7 @@ class RefineNet(nn.Module):
                 nn.Conv2d(32, 32, 5, stride=2),
                 nn.ELU(),
                 nn.Flatten(),
-                nn.Linear(32*5**2, 128),
+                nn.Linear(32*5**2, 128), #5x5 is the size of the final conv map (not the kernel size)
                 nn.ELU()
             )        
                     
@@ -192,7 +192,7 @@ class RefineNet(nn.Module):
                 nn.Conv2d(64, 64, 3, stride=2),
                 nn.ELU(),
                 nn.Flatten(),
-                nn.Linear(64*3**2, 256),
+                nn.Linear(64*7**2, 256), #7x7 is the size of the final conv map
                 nn.ELU()
             )  
             self.lstm = nn.LSTMCell(256+vec_input_size, 256) #Times tot_n_latent by two here because the inputs we get as input the latents and their gradients        
@@ -304,7 +304,11 @@ class C2PO(pl.LightningModule):
         self.save_hyperparameters()
         
         self.im_prec = self.im_var**-1 
-        self.register_buffer('h0', torch.zeros(1, 128))       
+        if network_config=='simple':
+            self.register_buffer('h0', torch.zeros(1, 128))       
+        elif network_config=='greffCLEVR':
+            self.register_buffer('h0', torch.zeros(1, 256))       
+
         self.tot_n_latent = n_latent*2*2 #Total number of latent entries: n_latent times two because we have state and derivative, and then whole thing times two again because we have mu and logsd for all (or times three if we also output autocorrs)
 
         if threeD:
@@ -335,8 +339,8 @@ class C2PO(pl.LightningModule):
             if not self.init_percept_net_path==self.init_goal_net_path:
                 del percept_net
         else:
-            self.decoder = SBD(in_channels=n_latent+2, config=self.config)            
-            self.refine_net = RefineNet(self.tot_n_latent, vec_input_size=self.tot_n_latent*2, im_input_size = 16, config=self.config)
+            self.decoder = SBD(in_channels=n_latent+2, config=self.network_config)            
+            self.refine_net = RefineNet(self.tot_n_latent, vec_input_size=self.tot_n_latent*2, im_input_size = 16, config=self.network_config)
                         
             #mu and logsd for derivatives make sense to be 0 (logsd=0 means sd=1) as there's no reason to initialize the derivatives to anything else, and we might risk initializing them far away from the actual speed
             self.lambda0 = nn.Parameter(torch.cat((
