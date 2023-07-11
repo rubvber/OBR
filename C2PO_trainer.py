@@ -65,6 +65,7 @@ def main(args):
         'init_goal_net_path': args.init_goal_net_path,        
         'threeD': args.threeD,
         'with_rotation': args.with_rotation,
+        'network_config': args.network_config,
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -244,6 +245,7 @@ if __name__ == "__main__":
     parser.add_argument('--threeD', default=False, type=str2bool, help='Use 3-D dataset')
     parser.add_argument('--with_rotation', default=False, type=str2bool, help='Include rotations in environment? (Currently only implemented for 3D.)')
     parser.add_argument('--num_workers', default=None, type = int)
+    parser.add_argument('--network_config', default='simple', type=str, help='For setting different configurations of the decoder and refinement networks (mainly different complexity)')
 
     
     args = parser.parse_args()

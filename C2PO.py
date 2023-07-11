@@ -120,21 +120,34 @@ class GoalNet(nn.Module):
 
 
 class SBD(nn.Module):
-    def __init__(self, in_channels=32+2, out_channels=4, im_size=64):
+    def __init__(self, in_channels=32+2, out_channels=4, im_size=64, config='simple'):
         super().__init__()        
         self.im_size=im_size                
         
-        self.conv = nn.Sequential(
-            nn.ConvTranspose2d(in_channels, 32, 5, padding=2),
-            nn.ELU(),
-            nn.ConvTranspose2d(32, 32, 5, padding=2),
-            nn.ELU(),
-            nn.ConvTranspose2d(32, 32, 5, padding=2),
-            nn.ELU(),
-            nn.ConvTranspose2d(32, 32, 5, padding=2),
-            nn.ELU(),
-            nn.ConvTranspose2d(32, out_channels, 5, padding=2),
-        )
+        if config=='simple':
+            self.conv = nn.Sequential(
+                nn.ConvTranspose2d(in_channels, 32, 5, padding=2),
+                nn.ELU(),
+                nn.ConvTranspose2d(32, 32, 5, padding=2),
+                nn.ELU(),
+                nn.ConvTranspose2d(32, 32, 5, padding=2),
+                nn.ELU(),
+                nn.ConvTranspose2d(32, 32, 5, padding=2),
+                nn.ELU(),
+                nn.ConvTranspose2d(32, out_channels, 5, padding=2),
+            )
+        elif config=='greffCLEVR':
+            self.conv = nn.Sequential(
+                nn.ConvTranspose2d(in_channels, 64, 3, padding=1),
+                nn.ELU(),                
+                nn.ConvTranspose2d(64, 64, 3, padding=1),
+                nn.ELU(),
+                nn.ConvTranspose2d(64, 64, 3, padding=1),                
+                nn.ELU(),
+                nn.ConvTranspose2d(64, 64, 3, padding=1),                             
+                nn.ELU(),                
+                nn.ConvTranspose2d(64, out_channels, 3, padding=1),
+            )
         
         gx, gy = torch.meshgrid([torch.linspace(-1,1,im_size)]*2)        
         gg = torch.stack((gx, gy)).unsqueeze(0) # Creates size 1 x 2 x im_size x im_size
@@ -152,23 +165,38 @@ class SBD(nn.Module):
         return mu_x, mask_logits
 
 class RefineNet(nn.Module):
-    def __init__(self, tot_n_latent, vec_input_size, im_input_size):
+    def __init__(self, tot_n_latent, vec_input_size, im_input_size, config='simple'):
         super().__init__()
         #tot_n_latent here should mean the total dimensionality of the latent space, including mu and logsd, derivatives and actions
-        self.conv = nn.Sequential(
-            nn.Conv2d(im_input_size, 32, 5, stride=2),
-            nn.ELU(),
-            nn.Conv2d(32, 32, 5, stride=2),
-            nn.ELU(),
-            nn.Conv2d(32, 32, 5, stride=2),
-            nn.ELU(),
-            nn.Flatten(),
-            nn.Linear(32*5**2, 128),
-            nn.ELU()
-        )        
-                
-        self.lstm = nn.LSTMCell(128+vec_input_size, 128) #Times tot_n_latent by two here because the inputs we get as input the latents and their gradients        
-        self.fc_out = nn.Linear(128, tot_n_latent)        
+        if config=='simple':
+            self.conv = nn.Sequential(
+                nn.Conv2d(im_input_size, 32, 5, stride=2),
+                nn.ELU(),
+                nn.Conv2d(32, 32, 5, stride=2),
+                nn.ELU(),
+                nn.Conv2d(32, 32, 5, stride=2),
+                nn.ELU(),
+                nn.Flatten(),
+                nn.Linear(32*5**2, 128),
+                nn.ELU()
+            )        
+                    
+            self.lstm = nn.LSTMCell(128+vec_input_size, 128) #Times tot_n_latent by two here because the inputs we get as input the latents and their gradients        
+            self.fc_out = nn.Linear(128, tot_n_latent)        
+        elif config=='greffCLEVR':
+            self.conv = nn.Sequential(
+                nn.Conv2d(im_input_size, 64, 3, stride=2),
+                nn.ELU(),
+                nn.Conv2d(64, 64, 3, stride=2),
+                nn.ELU(),
+                nn.Conv2d(64, 64, 3, stride=2),
+                nn.ELU(),
+                nn.Flatten(),
+                nn.Linear(64*3**2, 256),
+                nn.ELU()
+            )  
+            self.lstm = nn.LSTMCell(256+vec_input_size, 256) #Times tot_n_latent by two here because the inputs we get as input the latents and their gradients        
+            self.fc_out = nn.Linear(256, tot_n_latent)     
         
     def forward(self, x, h, c):
         conv_out = self.conv(x['img'])        
@@ -232,6 +260,7 @@ class C2PO(pl.LightningModule):
             heart_becomes_square=0,
             threeD = False,
             with_rotation = False,
+            network_config = 'simple',
         ):            
 
             
@@ -269,6 +298,8 @@ class C2PO(pl.LightningModule):
         self.heart_becomes_square = heart_becomes_square
         self.threeD = threeD
         self.with_rotation = with_rotation
+        self.network_config = network_config
+
         
         self.save_hyperparameters()
         
@@ -304,8 +335,8 @@ class C2PO(pl.LightningModule):
             if not self.init_percept_net_path==self.init_goal_net_path:
                 del percept_net
         else:
-            self.decoder = SBD(in_channels=n_latent+2)            
-            self.refine_net = RefineNet(self.tot_n_latent, vec_input_size=self.tot_n_latent*2, im_input_size = 16)
+            self.decoder = SBD(in_channels=n_latent+2, config=self.config)            
+            self.refine_net = RefineNet(self.tot_n_latent, vec_input_size=self.tot_n_latent*2, im_input_size = 16, config=self.config)
                         
             #mu and logsd for derivatives make sense to be 0 (logsd=0 means sd=1) as there's no reason to initialize the derivatives to anything else, and we might risk initializing them far away from the actual speed
             self.lambda0 = nn.Parameter(torch.cat((
