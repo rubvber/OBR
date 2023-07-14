@@ -119,6 +119,9 @@ def main(args):
             'interactive': args.interactive,
             'gpus': gpus[trainer.global_rank],         
             'with_rotation': args.with_rotation,
+            'bounding_actions': args.ad_bounding_actions,
+            'scale_min': args.ad_scale_min,
+            'scale_max': args.ad_scale_max,
         })
         active_dsprites_val = active_3dsprites_dataset({
             'N': 128 if args.debug_run else 10000,
@@ -127,6 +130,10 @@ def main(args):
             'interactive': args.interactive,
             'gpus': gpus[trainer.global_rank],  
             'with_rotation': args.with_rotation,
+            'bounding_actions': args.ad_bounding_actions,
+            'scale_min': args.ad_scale_min,
+            'scale_max': args.ad_scale_max,
+            'rand_seed0': 50000+1234+4343,
         })
 
     else:
@@ -246,6 +253,8 @@ if __name__ == "__main__":
     parser.add_argument('--with_rotation', default=False, type=str2bool, help='Include rotations in environment? (Currently only implemented for 3D.)')
     parser.add_argument('--num_workers', default=None, type = int)
     parser.add_argument('--network_config', default='simple', type=str, help='For setting different configurations of the decoder and refinement networks (mainly different complexity)')
+    parser.add_argument('--ad_scale_min', default=1.0, type=float)
+    parser.add_argument('--ad_scale_max', default=1.5, type=float)
 
     
     args = parser.parse_args()
