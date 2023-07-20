@@ -1223,6 +1223,7 @@ class C2PO(pl.LightningModule):
                 'val_loss_final': out_dict['frame_losses'].sum()+goal_loss, 
                 'val_mse_goal': goal_mse},
                 sync_dist=True)                    
+            
             if batch_idx==0:
                 pred_rec, _, pred_mask = self.decode(pred_goal, do_sample=False)
                 pred_goal_ims, _ = self.comb_rec(pred_rec, pred_mask) 
@@ -1248,6 +1249,10 @@ class C2PO(pl.LightningModule):
             'F-ARI': FARI_scores.mean(),
             'latent_sd_avg': (2*logsd.exp()).sqrt().mean(),
         }, sync_dist=True) 
+
+        for i in range(self.D.shape[0]):
+            for j in range(self.D.shape[1]):
+                self.log('D/{}-{}'.format(i,j), self.D[i,j], sync_dist=True)
        
         val_out_dict = {                
                 'total_loss': out_dict['total_loss'],
@@ -1303,6 +1308,7 @@ class C2PO(pl.LightningModule):
                 plt.ylabel('Goal loss')              
                 
                 self.logger.experiment.add_figure('goal_loss_per_latent', fh, self.current_epoch, close=True)                
+                plt.close(fh)
               
 
             loss_steps = torch.stack([foo['loss_steps'] for foo in outputs]).to(torch.float32)
@@ -1314,11 +1320,13 @@ class C2PO(pl.LightningModule):
             plt.ylabel('Loss')
 
             self.logger.experiment.add_figure('loss_steps', fh, self.current_epoch, close=True)  
+            plt.close(fh)
                 
             fig = plt.figure(figsize=(10,10))                
             pos = plt.imshow(self.D.t().detach().cpu())                
             fig.colorbar(pos)
             self.logger.experiment.add_figure('D', fig, self.current_epoch, close=True)                 
+            plt.close(fig)
         
         return super().validation_epoch_end(outputs)
 

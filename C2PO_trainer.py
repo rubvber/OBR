@@ -122,6 +122,7 @@ def main(args):
             'bounding_actions': args.ad_bounding_actions,
             'scale_min': args.ad_scale_min,
             'scale_max': args.ad_scale_max,
+            'bgcolor': args.ad_bgcolor,
         })
         active_dsprites_val = active_3dsprites_dataset({
             'N': 128 if args.debug_run else 10000,
@@ -130,10 +131,11 @@ def main(args):
             'interactive': args.interactive,
             'gpus': gpus[trainer.global_rank],  
             'with_rotation': args.with_rotation,
-            'bounding_actions': args.ad_bounding_actions,
+            'bounding_actions': args.ad_bounding_actions if args.val_predict==0 else False,
             'scale_min': args.ad_scale_min,
             'scale_max': args.ad_scale_max,
             'rand_seed0': 50000+1234+4343,
+            'bgcolor': args.ad_bgcolor,
         })
 
     else:
@@ -255,6 +257,7 @@ if __name__ == "__main__":
     parser.add_argument('--network_config', default='simple', type=str, help='For setting different configurations of the decoder and refinement networks (mainly different complexity)')
     parser.add_argument('--ad_scale_min', default=1.0, type=float)
     parser.add_argument('--ad_scale_max', default=1.5, type=float)
+    parser.add_argument('--ad_bgcolor', default=None, type=int)
 
     
     args = parser.parse_args()
@@ -262,11 +265,11 @@ if __name__ == "__main__":
     if False:
         args.threeD = True
         args.debug_run = True
-        args.gpus = [1,]        
+        args.gpus = [0,]        
         args.reduceLR_factor = 0.333333
         args.with_rotation = True
-        args.network_config = 'greffCLEVR'
-        args.n_latent= 32
+        args.network_config = 'simple'
+        args.n_latent= 16
         args.val_batch_size=16
     main(args)
 
