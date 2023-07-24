@@ -50,10 +50,33 @@
 #     --val_batch_size 16 --beta 5.0 --ad_scale_min 1.5 --ad_scale_max 1.50001 --n_latent 32 --ad_bgcolor 127 
 #v26
 
-python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333  --ad_bounding_actions False --D_init_sd 0.00002 \
-    --val_batch_size 16 --ad_bgcolor 127 --beta 5.0 --action_frames 100 --ad_scale_min 1.5 --ad_scale_max 1.50001 \
-    --resume_from_checkpiont /home/rubber/C2PO/C2PO_logs/lightning_logs/version_28/checkpoints/last.ckpt
+# python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333  --ad_bounding_actions False --D_init_sd 0.00002 \
+#     --val_batch_size 16 --ad_bgcolor 127 --beta 5.0 --action_frames 100 --ad_scale_min 1.5 --ad_scale_max 1.50001 \
+#     --resume_from_checkpoint /home/rubber/C2PO/C2PO_logs/lightning_logs/version_28/checkpoints/last.ckpt
 #v28: No actions
+#v29: v28 resumed
 
 # python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333 --D_init_sd 0.002 \
-#     --val_batch_size 16 --ad_bgcolor 127 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 
+    # --val_batch_size 16 --ad_bgcolor 127 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 --sigma_chi 0.1 --init_tau 1.0
+#v30: with actions
+
+# python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333 --D_init_sd 0.002 \
+#     --val_batch_size 16 --ad_bgcolor 127 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 --sigma_chi 0.1 --init_tau 1.0 --include_bgd_action False
+#v31: with actions, but not on bgd
+
+# python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333 --reduceLR_patience 8 --D_init_sd 0.002 \
+#     --val_batch_size 16 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 --sigma_chi 0.1 --init_tau 1.0
+# #v32: with actions, incl bgd, but variable bgd color - did not work so well
+
+# python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333 --reduceLR_patience 8 --D_init_sd 0.002 \
+#     --val_batch_size 16 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 --sigma_chi 0.1 --init_tau 1.0 --ad_bgcolor 127 \
+#     --with_rotation True
+
+# python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333 --reduceLR_patience 8 --D_init_sd 0.002 \
+#     --val_batch_size 16 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 --sigma_chi 0.1 --init_tau 1.0 --ad_bgcolor 127 \
+#     --with_rotation True
+#v33: fixed bgcolor, with rotation
+
+python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333 --reduceLR_patience 8 --D_init_sd 0.002 \
+    --val_batch_size 16 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 --sigma_chi 0.1 --init_tau 1.0 --ad_bgcolor 127 \
+    --ad_no_depth_motion True

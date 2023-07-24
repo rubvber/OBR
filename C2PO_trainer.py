@@ -123,6 +123,8 @@ def main(args):
             'scale_min': args.ad_scale_min,
             'scale_max': args.ad_scale_max,
             'bgcolor': args.ad_bgcolor,
+            'include_bgd_action': args.include_bgd_action,
+            'no_depth_motion': args.ad_no_depth_motion,
         })
         active_dsprites_val = active_3dsprites_dataset({
             'N': 128 if args.debug_run else 10000,
@@ -136,6 +138,8 @@ def main(args):
             'scale_max': args.ad_scale_max,
             'rand_seed0': 50000+1234+4343,
             'bgcolor': args.ad_bgcolor,
+            'include_bgd_action': args.include_bgd_action,
+            'no_depth_motion': args.ad_no_depth_motion,
         })
 
     else:
@@ -258,18 +262,21 @@ if __name__ == "__main__":
     parser.add_argument('--ad_scale_min', default=1.0, type=float)
     parser.add_argument('--ad_scale_max', default=1.5, type=float)
     parser.add_argument('--ad_bgcolor', default=None, type=int)
+    parser.add_argument('--ad_no_depth_motion', default=False, type=str2bool)
+
 
     
     args = parser.parse_args()
 
-    if False:
+    if True:
         args.threeD = True
         args.debug_run = True
         args.gpus = [0,]        
         args.reduceLR_factor = 0.333333
-        args.with_rotation = True
+        args.with_rotation = False
         args.network_config = 'simple'
         args.n_latent= 16
         args.val_batch_size=16
+        args.ad_no_depth_motion=True
     main(args)
 
