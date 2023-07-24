@@ -107,7 +107,7 @@ def main(args):
     model.all_calling_args = args
 
     trainer = pl.Trainer(devices=gpus, accelerator="gpu", strategy='ddp' if len(gpus)>1 else None, precision=args.precision, max_epochs=args.max_epochs, callbacks=callbacks,
-        logger=pl.loggers.TensorBoardLogger('./C2PO_logs/'), gradient_clip_val=args.gradient_clip_val, gradient_clip_algorithm='norm', resume_from_checkpoint=ckpt_path,
+        logger=pl.loggers.TensorBoardLogger(args.logdir), gradient_clip_val=args.gradient_clip_val, gradient_clip_algorithm='norm', resume_from_checkpoint=ckpt_path,
         accumulate_grad_batches= args.accumulate_grad_batches, track_grad_norm=2, num_nodes=1)
         
 
@@ -264,6 +264,7 @@ if __name__ == "__main__":
     parser.add_argument('--ad_bgcolor', default=None, type=int)
     parser.add_argument('--ad_no_depth_motion', default=False, type=str2bool)
 
+    parser.add_argument('--logdir', default='./C2PO_logs/', type=str)
 
     
     args = parser.parse_args()
