@@ -459,8 +459,8 @@ class C2PO(pl.LightningModule):
                 if self.new_first_action_inf:
                     if first_frame_overall:                    
                         # In this case there cannot be an action lambda so we set it to 0 mu and 0 var
-                        N,F,K,_ = curr_action_lambda.shape[:]
-                        foo = torch.cat((torch.zeros(N,1,K,self.action_dim, device=self.device), torch.ones(N,1,K,self.action_dim,device=self.device)*-torch.inf),-1)
+                        N,_,K,_ = curr_action_lambda.shape[:]
+                        foo = torch.cat((torch.zeros(N,1,K,self.action_dim, device=self.device), torch.ones(N,1,K,self.action_dim,device=self.device)*0),-1)
                         curr_action_lambda = torch.cat((foo, curr_action_lambda[:,1:]),1)
                 mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1) #Here 2 is appropriate (rather than self.action_dim) as we're just splitting the tensor in 2            
                 
@@ -497,6 +497,17 @@ class C2PO(pl.LightningModule):
             N,F,C,H,W = x.shape[:]  
             K = rec.shape[2]
 
+            use_frames = range(0,F)             
+                            
+            if in_dict['first_frame_overall']:
+                '''
+                This means the first frame was the very first and so there is no previous one, and we shouldn't compute an 
+                action loss for the first frame (as there is no previous mask to apply it to).                        
+                '''
+                use_frames = range(1,F)   
+
+
+
             mu_curr, logsd_curr = torch.split(curr_lambda, self.n_latent*2, dim=3)
             mu_pred, logsd_pred = torch.split(pred_lambda, self.n_latent*2, dim=3)
             if curr_action_lambda is None:
@@ -514,8 +525,11 @@ class C2PO(pl.LightningModule):
 
             rec_loss = -pix_like.log().sum((2,3))         
             
-                        
-            gaussian_entropy = 0.5*(1.0 + log(2*np.pi) + 2*torch.cat((logsd_curr, logsd_action), -1)).sum((2,3))
+            if self.new_first_action_inf and not 0 in use_frames:                
+                logsd_action = torch.cat((torch.ones(N,1,self.K,self.action_dim, device=x.device), logsd_action[:,1:]), 1)
+
+            gaussian_entropy = 0.5*(1.0 + log(2*np.pi) + 2*torch.cat((logsd_curr, logsd_action), -1)).sum((2,3)) 
+            
             if mu_pred.ndim==mu_curr.ndim+1:
                 mu_curr, logsd_curr, sigma_s = map(lambda x: x.unsqueeze(-1), (mu_curr, logsd_curr, sigma_s))
                                     
@@ -528,18 +542,7 @@ class C2PO(pl.LightningModule):
                 prediction_CE=prediction_CE.sum(2)
 
             del mu_curr, mu_pred, logsd_curr, logsd_pred     
-
-              
-            use_frames = range(0,F)             
-                
-            if not self.new_first_action_inf:                
-                if in_dict['first_frame_overall']:
-                    '''
-                    This means the first frame was the very first and so there is no previous one, and we shouldn't compute an 
-                    action loss for the first frame (as there is no previous mask to apply it to).                        
-                    '''
-                    use_frames = range(1,F)       
-                # Commenting this out means we do sample and do get a prediction which, combined with making all mask logits the same, will be a prediction of 0 action, which is what we want
+     
             
             mask_sample = gumbel_sample(prev_mask_logits[:,use_frames], dim=2, tau=self.gumbel_tau['curr_tau'], n=self.num_mask_samples, include_sample_dim=True)
             #mask_logits is already conditioned on sample of s gathered previously                                
@@ -548,9 +551,10 @@ class C2PO(pl.LightningModule):
 
             action_loss = (0.5*log(2*np.pi) + log(self.sigma_chi) + 0.5*self.sigma_chi**-2*((mu_action[:,use_frames].unsqueeze(-1) - action_pred)**2 + logsd_action[:,use_frames].unsqueeze(-1).exp()**2)).sum((2,3)).mean(-1)                
         
-            if not self.new_first_action_inf:  
-                if not 0 in use_frames:
-                    action_loss = torch.cat((torch.zeros(N,1, device=x.device), action_loss),1)
+            if not 0 in use_frames:
+                action_loss = torch.cat((torch.zeros(N,1, device=x.device), action_loss),1)
+                        
+                
         
             loss_per_im = -gaussian_entropy + prediction_CE + self.beta*rec_loss + action_loss
             loss = loss_per_im.mean(0) #Mean rather than sum so that it doesn't depend on batch size                        
