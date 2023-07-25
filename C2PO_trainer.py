@@ -66,6 +66,7 @@ def main(args):
         'threeD': args.threeD,
         'with_rotation': args.with_rotation,
         'network_config': args.network_config,
+        'new_first_action_inf': args.new_first_action_inf,
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -263,13 +264,13 @@ if __name__ == "__main__":
     parser.add_argument('--ad_scale_max', default=1.5, type=float)
     parser.add_argument('--ad_bgcolor', default=None, type=int)
     parser.add_argument('--ad_no_depth_motion', default=False, type=str2bool)
-
     parser.add_argument('--logdir', default='./C2PO_logs/', type=str)
+    parser.add_argument('--new_first_action_inf', default=False, type=str2bool)
 
     
     args = parser.parse_args()
 
-    if True:
+    if False:
         args.threeD = True
         args.debug_run = True
         args.gpus = [0,]        
@@ -279,5 +280,6 @@ if __name__ == "__main__":
         args.n_latent= 16
         args.val_batch_size=16
         args.ad_no_depth_motion=True
+        args.new_first_action_inf=True
     main(args)
 

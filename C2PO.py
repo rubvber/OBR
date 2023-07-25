@@ -261,6 +261,7 @@ class C2PO(pl.LightningModule):
             threeD = False,
             with_rotation = False,
             network_config = 'simple',
+            new_first_action_inf = False,
         ):            
 
             
@@ -299,7 +300,7 @@ class C2PO(pl.LightningModule):
         self.threeD = threeD
         self.with_rotation = with_rotation
         self.network_config = network_config
-
+        self.new_first_action_inf = new_first_action_inf
         
         self.save_hyperparameters()
         
@@ -435,7 +436,7 @@ class C2PO(pl.LightningModule):
         '''
 
 
-        def predict(prev_lambda, curr_lambda=None, curr_action_lambda=None, action_fields=None):         
+        def predict(prev_lambda, curr_lambda=None, curr_action_lambda=None, action_fields=None, first_frame_overall=False):         
             '''
          
             The output is the prediction of the current lamdba (based on the prev lambda and the curr action).
@@ -455,7 +456,14 @@ class C2PO(pl.LightningModule):
             var_prime_pred = var_prime_prev
             
             if curr_action_lambda is not None:
+                if self.new_first_action_inf:
+                    if first_frame_overall:                    
+                        # In this case there cannot be an action lambda so we set it to 0 mu and 0 var
+                        N,F,K,_ = curr_action_lambda.shape[:]
+                        foo = torch.cat((torch.zeros(N,1,K,self.action_dim, device=self.device), torch.ones(N,1,K,self.action_dim,device=self.device)*-torch.inf),-1)
+                        curr_action_lambda = torch.cat((foo, curr_action_lambda[:,1:]),1)
                 mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1) #Here 2 is appropriate (rather than self.action_dim) as we're just splitting the tensor in 2            
+                
                 mu_prime_pred = mu_prime_pred + (self.D.view(1,1,1,self.action_dim,-1)*mu_action.unsqueeze(-1)).sum(-2)             
                 var_prime_pred = var_prime_pred + (self.D.view(1,1,1,self.action_dim,-1)**2*logsd_action.exp().unsqueeze(-1)**2).sum(-2)                
         
@@ -524,12 +532,14 @@ class C2PO(pl.LightningModule):
               
             use_frames = range(0,F)             
                 
-            if in_dict['first_frame_overall']:
-                '''
-                This means the first frame was the very first and so there is no previous one, and we shouldn't compute an 
-                action loss for the first frame (as there is no previous mask to apply it to).                        
-                '''
-                use_frames = range(1,F)       
+            if not self.new_first_action_inf:                
+                if in_dict['first_frame_overall']:
+                    '''
+                    This means the first frame was the very first and so there is no previous one, and we shouldn't compute an 
+                    action loss for the first frame (as there is no previous mask to apply it to).                        
+                    '''
+                    use_frames = range(1,F)       
+                # Commenting this out means we do sample and do get a prediction which, combined with making all mask logits the same, will be a prediction of 0 action, which is what we want
             
             mask_sample = gumbel_sample(prev_mask_logits[:,use_frames], dim=2, tau=self.gumbel_tau['curr_tau'], n=self.num_mask_samples, include_sample_dim=True)
             #mask_logits is already conditioned on sample of s gathered previously                                
@@ -538,10 +548,10 @@ class C2PO(pl.LightningModule):
 
             action_loss = (0.5*log(2*np.pi) + log(self.sigma_chi) + 0.5*self.sigma_chi**-2*((mu_action[:,use_frames].unsqueeze(-1) - action_pred)**2 + logsd_action[:,use_frames].unsqueeze(-1).exp()**2)).sum((2,3)).mean(-1)                
         
-            if not 0 in use_frames:
-                action_loss = torch.cat((torch.zeros(N,1, device=x.device), action_loss),1)
+            if not self.new_first_action_inf:  
+                if not 0 in use_frames:
+                    action_loss = torch.cat((torch.zeros(N,1, device=x.device), action_loss),1)
         
-
             loss_per_im = -gaussian_entropy + prediction_CE + self.beta*rec_loss + action_loss
             loss = loss_per_im.mean(0) #Mean rather than sum so that it doesn't depend on batch size                        
             
@@ -676,8 +686,8 @@ class C2PO(pl.LightningModule):
                     #This means the first frame in the input is the first frame overall and so there is no previous mask
                     rec, mask_logits, mask = self.decode(curr_lambda)                        
                     first_prev_mask = torch.zeros(N,1,K,1,H,W, device=x.device)
-                    first_prev_mask_logits = torch.ones(N,1,K,1,H,W, device=x.device)*-torch.inf
-                    
+                    # first_prev_mask_logits = torch.ones(N,1,K,1,H,W, device=x.device)*-torch.inf
+                    first_prev_mask_logits = torch.ones(N,1,K,1,H,W, device=x.device) #This makes it so the sampling is random                    
                 else:
                     # Sample from q(s) and decode sample                                 
                     rec, mask_logits, mask = self.decode(torch.cat((first_prev_lambda,curr_lambda),1))                
@@ -697,7 +707,7 @@ class C2PO(pl.LightningModule):
                 '''
 
                 prev_lambda = torch.cat((first_prev_lambda, curr_lambda[:,:-1]), 1)                     
-                pred_lambda = predict(prev_lambda, curr_lambda=curr_lambda, curr_action_lambda=curr_action_lambda)
+                pred_lambda = predict(prev_lambda, curr_lambda=curr_lambda, curr_action_lambda=curr_action_lambda, first_frame_overall=first_frame_overall)
                 
                 #Compute loss
                 cl_dict = compute_loss({
@@ -1337,10 +1347,10 @@ class C2PO(pl.LightningModule):
 
             if not self.interactive:
                 
-                ims, _, action_fields, prior_pref = batch[:]
+                ims, _, action_fields = batch[:]
 
                 if self.val_predict==0:
-                    end_idx = batch.shape[1]
+                    end_idx = ims.shape[1]
                 else:
                     end_idx = -self.val_predict
                 
@@ -1348,16 +1358,10 @@ class C2PO(pl.LightningModule):
                     pass_action_fields=None
                 else:                    
                     pass_action_fields=action_fields[:,:end_idx]
-
-                pass_prior_pref=None
-                if self.with_prior_pref:
-                    pass_prior_pref = prior_pref[:,:end_idx]
-
                          
                 out_dict = self.forward(
                     ims[:,:end_idx],
-                    action_fields=pass_action_fields,
-                    prior_pref=pass_prior_pref,
+                    action_fields=pass_action_fields,        
                     num_predict=self.val_predict,
                     num_inf_steps=self.train_iter_per_timestep,
                     win_size=self.train_win_size)
