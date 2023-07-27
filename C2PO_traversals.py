@@ -27,7 +27,10 @@ active_dsprites_test = active_3dsprites_dataset({
             'rand_seed0': 50000+10000+1234+4243
         })
 
-model = C2PO().load_from_checkpoint('/home/rubber/C2PO/C2PO_logs/lightning_logs/version_30/checkpoints/last.ckpt')
+# model = C2PO().load_from_checkpoint('/home/rubber/C2PO/C2PO_logs/lightning_logs/version_30/checkpoints/last.ckpt')
+# model = C2PO().load_from_checkpoint('/home/rubber/C2PO/snellius_checkpoints/version_58/checkpoints/last.ckpt')
+# model = C2PO().load_from_checkpoint('/home/rubber/C2PO/snellius_checkpoints/version_59/checkpoints/last.ckpt')
+model = C2PO().load_from_checkpoint('/home/rubber/C2PO/snellius_checkpoints/version_63/checkpoints/last.ckpt')
 
 model.maxF=4
 model.val_predict=0
@@ -57,7 +60,7 @@ for i in range(model.n_latent):
     mask_cat_oh = (mask_cat==(torch.arange(K, device=device).view(1,K,1,1,1,1)))*1 #one-hot version of mask index (could also do sth like a==max(a), but that doesn't break ties)
     rec_comb = (mask_cat_oh*rec.detach()).sum(1) #Reconstruction obtained by hard-masking the reconstructions from the different slots
     this_grid = make_grid(rec_comb.view(N*20,3,64,64), nrow=20)
-    Image.fromarray((this_grid.permute(1,2,0)*255).to(torch.uint8).cpu().numpy()).save('./results/traversal_v30_dim{}.png'.format(i))
+    Image.fromarray((this_grid.permute(1,2,0)*255).to(torch.uint8).cpu().numpy()).save('./results/traversal_snellius-v63_dim{}.png'.format(i))
 
 
 

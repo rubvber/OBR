@@ -262,6 +262,7 @@ class C2PO(pl.LightningModule):
             with_rotation = False,
             network_config = 'simple',
             new_first_action_inf = False,
+            reg_D_lambda = (0.0,0.0)
         ):            
 
             
@@ -301,6 +302,7 @@ class C2PO(pl.LightningModule):
         self.with_rotation = with_rotation
         self.network_config = network_config
         self.new_first_action_inf = new_first_action_inf
+        self.reg_D_lambda = reg_D_lambda
         
         self.save_hyperparameters()
         
@@ -460,7 +462,9 @@ class C2PO(pl.LightningModule):
                     if first_frame_overall:                    
                         # In this case there cannot be an action lambda so we set it to 0 mu and 0 var
                         N,_,K,_ = curr_action_lambda.shape[:]
-                        foo = torch.cat((torch.zeros(N,1,K,self.action_dim, device=self.device), torch.ones(N,1,K,self.action_dim,device=self.device)*0),-1)
+                        # foo = torch.cat((torch.zeros(N,1,K,self.action_dim, device=self.device), torch.ones(N,1,K,self.action_dim,device=self.device)*-1000),-1)
+                        foo = torch.zeros(N,1,K,self.action_dim*2, device=self.device)
+                        # foo = torch.cat((torch.zeros(N,1,K,self.action_dim, device=self.device), torch.ones(N,1,K,self.action_dim,device=self.device)*-torch.inf),-1)
                         curr_action_lambda = torch.cat((foo, curr_action_lambda[:,1:]),1)
                 mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1) #Here 2 is appropriate (rather than self.action_dim) as we're just splitting the tensor in 2            
                 
@@ -1162,6 +1166,9 @@ class C2PO(pl.LightningModule):
             goal_loss = (-pred_logsd.sum((1,2,3)) + 0.5*((-2*targ_logsd).exp()*((targ_mu-pred_mu)**2 + (2*pred_logsd).exp())).sum((1,2,3))).mean(0)            
             out_dict['total_loss'] = out_dict['total_loss'] + goal_loss
             self.log('train_loss_goal', goal_loss)
+
+        if self.reg_D_lambda != (0.0,0.0):
+            out_dict['total_loss'] = out_dict['total_loss'] + self.reg_D_lambda[0]*self.D.abs().sum() + self.reg_D_lambda[1]*(self.D**2).sum()
 
         self.log_dict({
             'train_loss_final': out_dict['frame_losses'].sum(),

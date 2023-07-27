@@ -27,6 +27,12 @@ def main(args):
             gpus = (args.gpus,)
 
     
+    if isinstance(args.reg_D_lambda, list):
+        reg_D_lambda = tuple(*args.reg_D_lambda)
+    elif not isinstance(args.reg_D_lambda, tuple):
+        reg_D_lambda = (args.reg_D_lambda,)
+    else:
+        reg_D_lambda = args.reg_D_lambda
 
     
     if args.val_batch_size==None:
@@ -67,6 +73,7 @@ def main(args):
         'with_rotation': args.with_rotation,
         'network_config': args.network_config,
         'new_first_action_inf': args.new_first_action_inf,
+        'reg_D_lambda': reg_D_lambda
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -207,7 +214,7 @@ def parseNumList(string):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train IODINE")
+    parser = argparse.ArgumentParser(description="Train C2PO")
 
     parser.add_argument('--max_epochs', default=200, type=int, help="Maximum number of epochs to train for.")
     parser.add_argument('--K', default=4, type=int, help="Number of slots in the model")
@@ -266,6 +273,7 @@ if __name__ == "__main__":
     parser.add_argument('--ad_no_depth_motion', default=False, type=str2bool)
     parser.add_argument('--logdir', default='./C2PO_logs/', type=str)
     parser.add_argument('--new_first_action_inf', default=False, type=str2bool)
+    parser.add_argument('--reg_D_lambda', default=(0.0,0.0), type=float, nargs=2)
 
     
     args = parser.parse_args()
@@ -281,5 +289,6 @@ if __name__ == "__main__":
         args.val_batch_size=16
         args.ad_no_depth_motion=True
         args.new_first_action_inf=True
+        
     main(args)
 

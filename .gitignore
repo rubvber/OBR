@@ -3,3 +3,5 @@ TODO.txt
 C2PO_logs/*
 *.png
 zz_showbase_log.txt
+results/*
+snellius_checkpoints/*

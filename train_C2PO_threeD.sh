@@ -82,5 +82,12 @@
 #     --val_batch_size 16 --ad_bgcolor 127 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 --sigma_chi 0.1 --init_tau 1.0 \
 #     --new_first_action_inf True --learning_rate 1e-4 --random_seed 1238
 
-python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD False --batch_size 8 --reduceLR_factor 0.333333 --D_init_sd 0.002 \
-    --val_batch_size 16 --beta 5.0  --new_first_action_inf True 
+# python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD False --batch_size 8 --reduceLR_factor 0.333333 --D_init_sd 0.002 \
+    # --val_batch_size 16 --beta 5.0  --new_first_action_inf True 
+#v53
+
+python C2PO_trainer.py --gpus 1 2 3 4 5 6 7 8  --threeD True --batch_size 8 --reduceLR_factor 0.333333 --D_init_sd 0.002 \
+    --val_batch_size 16 --ad_bgcolor 127 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 --sigma_chi 0.1 --init_tau 1.0 \
+    --new_first_action_inf True --learning_rate 3e-4  --with_rotation True --ad_bounding_actions True
+
+
