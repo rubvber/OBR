@@ -28,7 +28,7 @@ def main(args):
 
     
     if isinstance(args.reg_D_lambda, list):
-        reg_D_lambda = tuple(*args.reg_D_lambda)
+        reg_D_lambda = tuple(args.reg_D_lambda)
     elif not isinstance(args.reg_D_lambda, tuple):
         reg_D_lambda = (args.reg_D_lambda,)
     else:
