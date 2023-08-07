@@ -265,6 +265,7 @@ class C2PO(pl.LightningModule):
             new_first_action_inf = False,
             reg_D_lambda = (0.0,0.0),
             goal_trainer_mode = False,
+            return_images = True,
         ):            
 
             
@@ -306,6 +307,7 @@ class C2PO(pl.LightningModule):
         self.new_first_action_inf = new_first_action_inf
         self.reg_D_lambda = reg_D_lambda
         self.goal_trainer_mode = goal_trainer_mode
+        self.return_images = return_images
         
         self.save_hyperparameters()
         
