@@ -1130,8 +1130,8 @@ class C2PO(pl.LightningModule):
             'loss_pred': torch.tensor([foo[-1] for foo in all_pred_losses]).mean(),
             'loss_negent': torch.tensor([foo[-1] for foo in all_negent_losses]).mean(),
             'loss_action': torch.tensor([foo[-1] for foo in all_action_losses]).mean(),
-            'rec': all_recs if self.interactive and self.return_images else None,            
-            'mask': all_masks if self.interactive and self.return_images else None,            
+            'rec': all_recs if self.return_images else None,            
+            'mask': all_masks if self.return_images else None,            
             'final_lambda': all_lambdas,            
             'ims': x if self.return_images else None,
             'true_masks': true_masks if self.interactive and self.return_images else None,
@@ -1140,7 +1140,7 @@ class C2PO(pl.LightningModule):
             'loss_steps_per_im': all_losses_per_im_tensor,
             'prior_pref': prior_pref,            
             'pref_lambda': all_pref_lambdas if self.with_goal_net and self.interactive else None,
-            'action_fields': action_fields if self.interactive else None,
+            'action_fields': action_fields if self.interactive and self.return_images else None,
         }
 
         return out_dict
@@ -1229,7 +1229,7 @@ class C2PO(pl.LightningModule):
                 'val_loss_final': goal_loss,
                 'val_mse_goal': goal_mse},
                 sync_dist=True)                    
-            if batch_idx==0 and self.global_rank==0:                
+            if batch_idx==0 and self.global_rank==0:               
                 pred_rec, _, pred_mask = self.decode(pred_goal, do_sample=False)
                 pred_goal_ims, _ = self.comb_rec(pred_rec, pred_mask)  
                 H,W = pred_goal_ims.shape[-2:]      
