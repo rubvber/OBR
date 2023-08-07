@@ -2,14 +2,27 @@ import argparse
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from C2PO import C2PO 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from active_dsprites import active_dsprites
 from argparse import ArgumentTypeError
-import re
-import sys
+import re, sys, pickle
 
 sys.path.append('../AttentionExperiments/src/')
 from active_3dsprites import active_3dsprites_dataset
+
+class GoalData(Dataset):
+    def __init__(self, path):
+        self.path = path
+        with open(path, 'rb') as fh:
+            self.data = pickle.load(fh)
+            
+    def __len__(self):
+
+        return self.data.shape[0]
+    
+    def __getitem__(self, idx):
+
+        return self.data[idx]
 
 def main(args):
 
@@ -73,7 +86,8 @@ def main(args):
         'with_rotation': args.with_rotation,
         'network_config': args.network_config,
         'new_first_action_inf': args.new_first_action_inf,
-        'reg_D_lambda': reg_D_lambda
+        'reg_D_lambda': reg_D_lambda,
+        'goal_trainer_mode': True if args.goal_train_data is not None else False,
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -102,7 +116,8 @@ def main(args):
         ckpt_path=args.resume_from_checkpoint   
 
     checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss_cumul",
+        # monitor="val_loss_cumul",        
+        monitor="val_loss_final",
         save_top_k=1, 
         mode="min",
         save_last=True         
@@ -118,63 +133,72 @@ def main(args):
         logger=pl.loggers.TensorBoardLogger(args.logdir), gradient_clip_val=args.gradient_clip_val, gradient_clip_algorithm='norm', resume_from_checkpoint=ckpt_path,
         accumulate_grad_batches= args.accumulate_grad_batches, track_grad_norm=2, num_nodes=1)
         
+    if args.goal_train_data is not None:
+        train_path = args.goal_train_data
+        val_path = str.replace(train_path, 'train', 'val')        
 
-    if args.threeD:
-        active_dsprites_train = active_3dsprites_dataset({
-            'N': 256 if args.debug_run else 50000,
-            'episode_length': args.ad_num_frames,
-            'action_frames': args.action_frames,
-            'interactive': args.interactive,
-            'gpus': gpus[trainer.global_rank],         
-            'with_rotation': args.with_rotation,
-            'bounding_actions': args.ad_bounding_actions,
-            'scale_min': args.ad_scale_min,
-            'scale_max': args.ad_scale_max,
-            'bgcolor': args.ad_bgcolor,
-            'include_bgd_action': args.include_bgd_action,
-            'no_depth_motion': args.ad_no_depth_motion,
-        })
-        active_dsprites_val = active_3dsprites_dataset({
-            'N': 128 if args.debug_run else 10000,
-            'episode_length': args.ad_val_num_frames,
-            'action_frames': args.action_frames,
-            'interactive': args.interactive,
-            'gpus': gpus[trainer.global_rank],  
-            'with_rotation': args.with_rotation,
-            'bounding_actions': args.ad_bounding_actions if args.val_predict==0 else False,
-            'scale_min': args.ad_scale_min,
-            'scale_max': args.ad_scale_max,
-            'rand_seed0': 50000+1234+4343,
-            'bgcolor': args.ad_bgcolor,
-            'include_bgd_action': args.include_bgd_action,
-            'no_depth_motion': args.ad_no_depth_motion,
-        })
+        train_goal_data = GoalData(train_path)
+        val_goal_data = GoalData(val_path)
 
+        train_loader = DataLoader(train_goal_data, args.batch_size, num_workers=4, persistent_workers=True, drop_last=True, pin_memory=True)
+        val_loader = DataLoader(val_goal_data, val_batch_size, num_workers=4, persistent_workers=True, drop_last=True, pin_memory=True)
     else:
-        active_dsprites_train = active_dsprites(        
-            N=256 if args.debug_run else 50000,
-            num_frames=args.ad_num_frames,
-            action_frames=args.action_frames,
-            interactive=args.interactive,
-            pos_smp_stats=(0.2,0.8),            
-            include_bgd_action=args.include_bgd_action,        
-            bounding_actions=args.ad_bounding_actions,
-            rule_goal = args.ad_rule_goal,
-            rule_goal_actions= args.ad_rule_goal_actions,        
-            )
-        active_dsprites_val = active_dsprites(
-            include_masks=True,         
-            N=64 if args.debug_run else 10000,
-            interactive=args.interactive,
-            rand_seed0=50000+1234+4242, #As we want to avoid duplicating any indices from the training set, we need to add its randseed0 and its size (plus some safety margin)
-            num_frames=args.ad_val_num_frames,
-            action_frames=args.action_frames,
-            pos_smp_stats=(0.2,0.8),         
-            include_bgd_action=args.include_bgd_action,                
-            bounding_actions=args.ad_bounding_actions if args.val_predict==0 else False,
-            rule_goal = args.ad_rule_goal,
-            rule_goal_actions= args.ad_rule_goal_actions,        
-            ) 
+        if args.threeD:
+            active_dsprites_train = active_3dsprites_dataset({
+                'N': 256 if args.debug_run else 50000,
+                'episode_length': args.ad_num_frames,
+                'action_frames': args.action_frames,
+                'interactive': args.interactive,
+                'gpus': gpus[trainer.global_rank],         
+                'with_rotation': args.with_rotation,
+                'bounding_actions': args.ad_bounding_actions,
+                'scale_min': args.ad_scale_min,
+                'scale_max': args.ad_scale_max,
+                'bgcolor': args.ad_bgcolor,
+                'include_bgd_action': args.include_bgd_action,
+                'no_depth_motion': args.ad_no_depth_motion,
+            })
+            active_dsprites_val = active_3dsprites_dataset({
+                'N': 128 if args.debug_run else 10000,
+                'episode_length': args.ad_val_num_frames,
+                'action_frames': args.action_frames,
+                'interactive': args.interactive,
+                'gpus': gpus[trainer.global_rank],  
+                'with_rotation': args.with_rotation,
+                'bounding_actions': args.ad_bounding_actions if args.val_predict==0 else False,
+                'scale_min': args.ad_scale_min,
+                'scale_max': args.ad_scale_max,
+                'rand_seed0': 50000+1234+4343,
+                'bgcolor': args.ad_bgcolor,
+                'include_bgd_action': args.include_bgd_action,
+                'no_depth_motion': args.ad_no_depth_motion,
+            })
+
+        else:
+            active_dsprites_train = active_dsprites(        
+                N=256 if args.debug_run else 50000,
+                num_frames=args.ad_num_frames,
+                action_frames=args.action_frames,
+                interactive=args.interactive,
+                pos_smp_stats=(0.2,0.8),            
+                include_bgd_action=args.include_bgd_action,        
+                bounding_actions=args.ad_bounding_actions,
+                rule_goal = args.ad_rule_goal,
+                rule_goal_actions= args.ad_rule_goal_actions,        
+                )
+            active_dsprites_val = active_dsprites(
+                include_masks=True,         
+                N=64 if args.debug_run else 10000,
+                interactive=args.interactive,
+                rand_seed0=50000+1234+4242, #As we want to avoid duplicating any indices from the training set, we need to add its randseed0 and its size (plus some safety margin)
+                num_frames=args.ad_val_num_frames,
+                action_frames=args.action_frames,
+                pos_smp_stats=(0.2,0.8),         
+                include_bgd_action=args.include_bgd_action,                
+                bounding_actions=args.ad_bounding_actions if args.val_predict==0 else False,
+                rule_goal = args.ad_rule_goal,
+                rule_goal_actions= args.ad_rule_goal_actions,        
+                ) 
         
                     
     if args.num_workers is None:
@@ -182,12 +206,12 @@ def main(args):
     else:   
         num_workers=args.num_workers
         
-    
-    train_loader = DataLoader(active_dsprites_train, args.batch_size, num_workers=num_workers, 
-                              persistent_workers=False if args.threeD else True, drop_last=True, pin_memory=False if args.threeD else True) 
-    
-    val_loader = DataLoader(active_dsprites_val, val_batch_size, num_workers=num_workers,
-                              persistent_workers=False if args.threeD else True, drop_last=True, pin_memory=False if args.threeD else True)
+    if args.goal_train_data is None:
+        train_loader = DataLoader(active_dsprites_train, args.batch_size, num_workers=num_workers, 
+                                persistent_workers=False if args.threeD else True, drop_last=True, pin_memory=False if args.threeD else True) 
+        
+        val_loader = DataLoader(active_dsprites_val, val_batch_size, num_workers=num_workers,
+                                persistent_workers=False if args.threeD else True, drop_last=True, pin_memory=False if args.threeD else True)
 
     
     trainer.fit(model, train_loader, val_loader)    
@@ -273,7 +297,8 @@ if __name__ == "__main__":
     parser.add_argument('--ad_no_depth_motion', default=False, type=str2bool)
     parser.add_argument('--logdir', default='./C2PO_logs/', type=str)
     parser.add_argument('--new_first_action_inf', default=False, type=str2bool)
-    parser.add_argument('--reg_D_lambda', default=(0.0,0.0), type=float, nargs=2)
+    parser.add_argument('--reg_D_lambda', default=(0.0,0.0), type=float, nargs=2, help='Hyperparameters for regularization of D-matrix (L1, L2)')
+    parser.add_argument('--goal_train_data', default=None, type=str, help='Path to data for training goal network')
 
     
     args = parser.parse_args()
@@ -281,7 +306,7 @@ if __name__ == "__main__":
     if False:
         args.threeD = True
         args.debug_run = True
-        args.gpus = [0,]        
+        args.gpus = [5,]        
         args.reduceLR_factor = 0.333333
         args.with_rotation = False
         args.network_config = 'simple'
@@ -289,6 +314,9 @@ if __name__ == "__main__":
         args.val_batch_size=16
         args.ad_no_depth_motion=True
         args.new_first_action_inf=True
-        
+        args.goal_train_data = '/home/rubber/C2PO/goal_data/train_data_IfHalfTorus_vsd0_snellius-v65.pkl'
+        args.freeze_percept_net = True
+        args.init_percept_net_path = '/home/rubber/C2PO/snellius_checkpoints/version_65/checkpoints/last.ckpt'
+        args.with_goal_net=True
     main(args)
 

@@ -16,7 +16,7 @@ active_dsprites_test = active_3dsprites_dataset({
             'episode_length': 4,
             'action_frames': (2,),
             'interactive': False,
-            'gpus': (0,),
+            'gpus': (9,),
             'with_rotation': False,
             'bounding_actions': False,
             'scale_min': 1.5,
@@ -30,16 +30,19 @@ active_dsprites_test = active_3dsprites_dataset({
 # model = C2PO().load_from_checkpoint('/home/rubber/C2PO/C2PO_logs/lightning_logs/version_30/checkpoints/last.ckpt')
 # model = C2PO().load_from_checkpoint('/home/rubber/C2PO/snellius_checkpoints/version_58/checkpoints/last.ckpt')
 # model = C2PO().load_from_checkpoint('/home/rubber/C2PO/snellius_checkpoints/version_59/checkpoints/last.ckpt')
-model = C2PO().load_from_checkpoint('/home/rubber/C2PO/snellius_checkpoints/version_63/checkpoints/last.ckpt')
+# model = C2PO().load_from_checkpoint('/home/rubber/C2PO/snellius_checkpoints/version_63/checkpoints/last.ckpt')
+model = C2PO().load_from_checkpoint('/home/rubber/C2PO/snellius_checkpoints/version_65/checkpoints/last.ckpt')
+# model = C2PO().load_from_checkpoint('/home/rubber/C2PO/C2PO_logs/lightning_logs/version_56/checkpoints/last.ckpt')
+
 
 model.maxF=4
 model.val_predict=0
 
 test_loader = DataLoader(active_dsprites_test, 16, num_workers=2, persistent_workers=False, drop_last=True)
-trainer = pl.Trainer(devices=(0,), accelerator="gpu", strategy='ddp', precision=16)
+trainer = pl.Trainer(devices=(9,), accelerator="gpu", strategy='ddp', precision=16)
 test_data = trainer.predict(model, dataloaders=test_loader)
 
-device='cuda:0'
+device='cuda:9'
 model.to(device)
 
 final_lambda = test_data[0]['final_lambda'][:,-1]
@@ -60,7 +63,7 @@ for i in range(model.n_latent):
     mask_cat_oh = (mask_cat==(torch.arange(K, device=device).view(1,K,1,1,1,1)))*1 #one-hot version of mask index (could also do sth like a==max(a), but that doesn't break ties)
     rec_comb = (mask_cat_oh*rec.detach()).sum(1) #Reconstruction obtained by hard-masking the reconstructions from the different slots
     this_grid = make_grid(rec_comb.view(N*20,3,64,64), nrow=20)
-    Image.fromarray((this_grid.permute(1,2,0)*255).to(torch.uint8).cpu().numpy()).save('./results/traversal_snellius-v63_dim{}.png'.format(i))
+    Image.fromarray((this_grid.permute(1,2,0)*255).to(torch.uint8).cpu().numpy()).save('./results/traversal_snellius-v65_dim{}.png'.format(i))
 
 
 

@@ -5,3 +5,7 @@ C2PO_logs/*
 zz_showbase_log.txt
 results/*
 snellius_checkpoints/*
+lightning_logs/*
+lightning_logs
+goal_data
+goal*data*.pkl

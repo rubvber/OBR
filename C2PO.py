@@ -1,6 +1,6 @@
 from math import log, sqrt
 import pytorch_lightning as pl
-import torch
+import torch, sys
 from torch import nn
 import numpy as np
 
@@ -10,7 +10,8 @@ from sklearn.metrics import adjusted_rand_score
 from matplotlib import pyplot as plt
 
 from active_dsprites import active_dsprites
-
+sys.path.append('../AttentionExperiments/src/')
+from active_3dsprites import active_3dsprites_vecenv
 
 
 def ismember(d, k):
@@ -262,7 +263,8 @@ class C2PO(pl.LightningModule):
             with_rotation = False,
             network_config = 'simple',
             new_first_action_inf = False,
-            reg_D_lambda = (0.0,0.0)
+            reg_D_lambda = (0.0,0.0),
+            goal_trainer_mode = False,
         ):            
 
             
@@ -303,6 +305,7 @@ class C2PO(pl.LightningModule):
         self.network_config = network_config
         self.new_first_action_inf = new_first_action_inf
         self.reg_D_lambda = reg_D_lambda
+        self.goal_trainer_mode = goal_trainer_mode
         
         self.save_hyperparameters()
         
@@ -816,16 +819,23 @@ class C2PO(pl.LightningModule):
         
         if self.interactive:
             N = len(x[0])
-            env = active_dsprites(data=x, num_sprites=x[0].shape[2])
-            x, true_masks, prior_pref = env.render()                        
+            if len(x)==2:
+                env = active_dsprites(data=x, num_sprites=x[0].shape[2])        
+                x, true_masks, prior_pref = env.render()                        
+                prior_pref = prior_pref.view(N,1)        
+                true_states = env.sprite_data.unsqueeze(1)    
+                true_bgc = env.bgcolor
+            if len(x)==3:
+                env = active_3dsprites_vecenv(ctx=x[2], init_data=x[:2])
+                x, true_masks = env.render()
+                true_states, true_bgc = env.get_true_states()
+
             _,C,H,W = x.shape[:]
             x=x.view(N,1,C,H,W)
             true_masks=true_masks.view(N,1,H,W)
             action_fields = torch.zeros(N,1,1,self.action_dim,H,W, device=x.device)
-            prior_pref = prior_pref.view(N,1)        
-
-            true_states = env.sprite_data.unsqueeze(1)    
-            true_bgc = env.bgcolor
+            
+            
         else:             
             N,maxF,C,H,W = x.shape[:] #Note that we never pass to-be-predicted frames to forward(), so F is always the full number of frames to be inferred. (To-be predicted frames are split off from the batch outside this function.)
 
@@ -1118,17 +1128,17 @@ class C2PO(pl.LightningModule):
             'loss_pred': torch.tensor([foo[-1] for foo in all_pred_losses]).mean(),
             'loss_negent': torch.tensor([foo[-1] for foo in all_negent_losses]).mean(),
             'loss_action': torch.tensor([foo[-1] for foo in all_action_losses]).mean(),
-            'rec': all_recs,            
-            'mask': all_masks,            
+            'rec': all_recs if self.interactive and self.return_images else None,            
+            'mask': all_masks if self.interactive and self.return_images else None,            
             'final_lambda': all_lambdas,            
-            'ims': x,
-            'true_masks': true_masks if self.interactive else None,
+            'ims': x if self.return_images else None,
+            'true_masks': true_masks if self.interactive and self.return_images else None,
             'true_states': true_states if self.interactive else None,
             'true_bgc': true_bgc if self.interactive else None,
             'loss_steps_per_im': all_losses_per_im_tensor,
             'prior_pref': prior_pref,            
             'pref_lambda': all_pref_lambdas if self.with_goal_net and self.interactive else None,
-            'action_fields': action_fields,
+            'action_fields': action_fields if self.interactive else None,
         }
 
         return out_dict
@@ -1137,6 +1147,21 @@ class C2PO(pl.LightningModule):
     def training_step(self, batch, batch_idx):        
         
         self.gumbel_tau['curr_tau'] = np.maximum(self.gumbel_tau['tau0']*np.exp(-self.gumbel_tau['anneal_rate']*self.global_step), self.gumbel_tau['min'])
+
+        if self.goal_trainer_mode:
+            N,F,K,_ = batch.shape
+            pred_goal = self.goal_net(batch.view(N*F, K, -1)).view(N,F,K,-1)
+            targ_goal = batch[:,(-1,)]
+            targ_mu, targ_logsd = torch.chunk(targ_goal, 2, -1)
+            pred_mu, pred_logsd = torch.chunk(pred_goal, 2, -1)
+
+            goal_loss_per_latent = (-pred_logsd.sum((1,2)) + 0.5*((-2*targ_logsd).exp()*((targ_mu-pred_mu)**2 + (2*pred_logsd).exp())).sum((1,2))).mean(0)            
+            goal_loss = goal_loss_per_latent.sum()                
+            
+            self.log_dict({'train_loss_goal': goal_loss},      
+                sync_dist=True)                
+
+            return goal_loss 
 
         if not self.interactive:
             if isinstance(batch, list):
@@ -1186,6 +1211,37 @@ class C2PO(pl.LightningModule):
   
     def validation_step(self, batch, batch_idx,):        
         torch.set_grad_enabled(True) #Pytorch lightning turns this off by default during validation, but we need it here for the internal gradient computation in forward()        
+
+        if self.goal_trainer_mode:
+            N,F,K,_ = batch.shape
+            pred_goal = self.goal_net(batch.view(N*F, K, -1)).view(N,F,K,-1)
+            targ_goal = batch[:,(-1,)]
+            targ_mu, targ_logsd = torch.chunk(targ_goal, 2, -1)
+            pred_mu, pred_logsd = torch.chunk(pred_goal, 2, -1)
+
+            # goal_loss = (-pred_logsd.sum((1,2,3)) + 0.5*((-2*targ_logsd).exp()*((targ_mu-pred_mu)**2 + (2*pred_logsd).exp())).sum((1,2,3))).mean(0)            
+            goal_loss_per_latent = (-pred_logsd.sum((1,2)) + 0.5*((-2*targ_logsd).exp()*((targ_mu-pred_mu)**2 + (2*pred_logsd).exp())).sum((1,2))).mean(0)            
+            goal_loss = goal_loss_per_latent.sum()                
+            goal_mse  = ((targ_mu-pred_mu)**2).mean()            
+            self.log_dict({'val_loss_goal': goal_loss,
+                'val_loss_final': goal_loss,
+                'val_mse_goal': goal_mse},
+                sync_dist=True)                    
+            if batch_idx==0 and self.global_rank==0:                
+                pred_rec, _, pred_mask = self.decode(pred_goal, do_sample=False)
+                pred_goal_ims, _ = self.comb_rec(pred_rec, pred_mask)  
+                H,W = pred_goal_ims.shape[-2:]      
+
+                orig_rec, _, orig_mask = self.decode(batch, do_sample=False)
+                orig_ims, _ = self.comb_rec(orig_rec, orig_mask)  
+
+                foo = torch.cat((orig_ims,pred_goal_ims),1)
+                goal_grid = make_grid(foo.view(N*F*2,3,H,W), nrow=F)
+                # goal_grid = make_grid(pred_goal_ims.view(N*F,3,H,W), nrow=F)
+                self.logger.experiment.add_image('goal_pred', goal_grid.cpu(), self.current_epoch)
+                del goal_grid, orig_rec, orig_ims, pred_rec, pred_goal_ims, pred_mask, orig_mask
+
+            return
 
         if not self.interactive:
             
@@ -1294,64 +1350,68 @@ class C2PO(pl.LightningModule):
    
 
     def validation_epoch_end(self, outputs) -> None:
-        K = outputs[0]['mask'].shape[2]        
-        N, F, C, H, W = outputs[0]['orig_ims'].shape
+        if not self.goal_trainer_mode:
+            K = outputs[0]['mask'].shape[2]        
+            N, F, C, H, W = outputs[0]['orig_ims'].shape
 
-        if not self.logger==None:                
-            
-            F_inf = F-self.val_predict        
+            if not self.logger==None:                
+                
+                F_inf = F-self.val_predict        
 
-            orig_vids = outputs[0]['orig_ims']            
-            rec_vids = outputs[0]['rec']
-            mask_vids = outputs[0]['mask'].transpose(1,2).reshape(N,F_inf*K,1,H,W).expand(-1,-1,3,-1,-1)
-            vids = torch.cat((orig_vids[:,:F_inf], rec_vids[:,:F_inf], mask_vids), 1)
-            
-            rec_vid_grid = make_grid(vids.view(N*F_inf*(2+K),C,H,W), nrow=F_inf)
-            
-            pred_vids = torch.cat((orig_vids, rec_vids), 1)
-            pred_vid_grid = make_grid(pred_vids.view(N*F*2,C,H,W), nrow=F)
-                        
-            self.logger.experiment.add_image('recons', rec_vid_grid.cpu(), self.current_epoch)        
-            self.logger.experiment.add_image('predictions', pred_vid_grid.cpu(), self.current_epoch)        
+                orig_vids = outputs[0]['orig_ims']            
+                rec_vids = outputs[0]['rec']
+                mask_vids = outputs[0]['mask'].transpose(1,2).reshape(N,F_inf*K,1,H,W).expand(-1,-1,3,-1,-1)
+                vids = torch.cat((orig_vids[:,:F_inf], rec_vids[:,:F_inf], mask_vids), 1)
+                
+                rec_vid_grid = make_grid(vids.view(N*F_inf*(2+K),C,H,W), nrow=F_inf)
+                
+                pred_vids = torch.cat((orig_vids, rec_vids), 1)
+                pred_vid_grid = make_grid(pred_vids.view(N*F*2,C,H,W), nrow=F)
+                            
+                self.logger.experiment.add_image('recons', rec_vid_grid.cpu(), self.current_epoch)        
+                self.logger.experiment.add_image('predictions', pred_vid_grid.cpu(), self.current_epoch)        
 
-            if self.with_goal_net:
-                pred_goal_ims = outputs[0]['pred_goal_ims']
-                goal_grid = torch.cat((orig_vids[:,:F_inf], rec_vids[:,:F_inf], pred_goal_ims), 1)
-                goal_grid = make_grid(goal_grid.view(N*F_inf*3,C,H,W), nrow=F_inf)
-                self.logger.experiment.add_image('goal_pred', goal_grid.cpu(), self.current_epoch)
+                if self.with_goal_net:
+                    pred_goal_ims = outputs[0]['pred_goal_ims']
+                    goal_grid = torch.cat((orig_vids[:,:F_inf], rec_vids[:,:F_inf], pred_goal_ims), 1)
+                    goal_grid = make_grid(goal_grid.view(N*F_inf*3,C,H,W), nrow=F_inf)
+                    self.logger.experiment.add_image('goal_pred', goal_grid.cpu(), self.current_epoch)
 
-                goal_loss_per_latent = torch.stack([foo['goal_loss_per_latent'] for foo in outputs]).to(torch.float32)
-                mean_plot = goal_loss_per_latent.mean(0).detach().cpu()
-                err_plot  = goal_loss_per_latent.std(0).detach().cpu()/sqrt(goal_loss_per_latent.shape[0])
+                    goal_loss_per_latent = torch.stack([foo['goal_loss_per_latent'] for foo in outputs]).to(torch.float32)
+                    mean_plot = goal_loss_per_latent.mean(0).detach().cpu()
+                    err_plot  = goal_loss_per_latent.std(0).detach().cpu()/sqrt(goal_loss_per_latent.shape[0])
+                    fh = plt.figure()
+                    plt.errorbar(np.arange(mean_plot.shape[0]), mean_plot, err_plot, linestyle='', marker='o')
+                    plt.xlabel('Latent #')
+                    plt.ylabel('Goal loss')              
+                    
+                    self.logger.experiment.add_figure('goal_loss_per_latent', fh, self.current_epoch, close=True)                
+                    plt.close(fh)
+                
+
+                loss_steps = torch.stack([foo['loss_steps'] for foo in outputs]).to(torch.float32)
+                mean_plot = loss_steps.mean(0).detach().cpu()
+                err_plot  = loss_steps.std(0).detach().cpu()/sqrt(loss_steps.shape[0])
                 fh = plt.figure()
-                plt.errorbar(np.arange(mean_plot.shape[0]), mean_plot, err_plot, linestyle='', marker='o')
-                plt.xlabel('Latent #')
-                plt.ylabel('Goal loss')              
-                
-                self.logger.experiment.add_figure('goal_loss_per_latent', fh, self.current_epoch, close=True)                
+                plt.errorbar(np.arange(mean_plot.shape[0]), mean_plot, err_plot)
+                plt.xlabel('Iteration')
+                plt.ylabel('Loss')
+
+                self.logger.experiment.add_figure('loss_steps', fh, self.current_epoch, close=True)  
                 plt.close(fh)
-              
-
-            loss_steps = torch.stack([foo['loss_steps'] for foo in outputs]).to(torch.float32)
-            mean_plot = loss_steps.mean(0).detach().cpu()
-            err_plot  = loss_steps.std(0).detach().cpu()/sqrt(loss_steps.shape[0])
-            fh = plt.figure()
-            plt.errorbar(np.arange(mean_plot.shape[0]), mean_plot, err_plot)
-            plt.xlabel('Iteration')
-            plt.ylabel('Loss')
-
-            self.logger.experiment.add_figure('loss_steps', fh, self.current_epoch, close=True)  
-            plt.close(fh)
-                
-            fig = plt.figure(figsize=(10,10))                
-            pos = plt.imshow(self.D.t().detach().cpu())                
-            fig.colorbar(pos)
-            self.logger.experiment.add_figure('D', fig, self.current_epoch, close=True)                 
-            plt.close(fig)
-        
-        return super().validation_epoch_end(outputs)
+                    
+                fig = plt.figure(figsize=(10,10))                
+                pos = plt.imshow(self.D.t().detach().cpu())                
+                fig.colorbar(pos)
+                self.logger.experiment.add_figure('D', fig, self.current_epoch, close=True)                 
+                plt.close(fig)
+            
+            return super().validation_epoch_end(outputs)
 
     def predict_step(self, batch, batch_idx):
+        if not hasattr(self,'return_images'):
+            self.return_images=True
+
         with torch.inference_mode(False):
             
             torch.set_grad_enabled(True) #Pytorch lightning turns this off by default during prediction, but we need it here for the internal gradient computation in forward()        
@@ -1377,6 +1437,10 @@ class C2PO(pl.LightningModule):
                     num_inf_steps=self.train_iter_per_timestep,
                     win_size=self.train_win_size)
 
+                if not self.return_images:
+                    for k in ['ims', 'mask', 'rec', 'true_masks', 'action_fields']:
+                        del out_dict[k]
+
             else:
                 #Interactive              
                 out_dict = self.forward(
@@ -1390,7 +1454,7 @@ class C2PO(pl.LightningModule):
                 if self.with_goal_net:
                     pref_rec,pref_mask,_ = self.decode(out_dict['pref_lambda'], do_sample=False)
                     pref_rec,_ = self.comb_rec(pref_rec, pref_mask)
-                    out_dict['pref_rec'] = pref_rec
+                    out_dict['pref_rec'] = pref_rec 
 
         torch.set_grad_enabled(False) 
 
