@@ -10,7 +10,6 @@ from sklearn.metrics import adjusted_rand_score
 from matplotlib import pyplot as plt
 
 from active_dsprites import active_dsprites
-sys.path.append('../AttentionExperiments/src/')
 from active_3dsprites import active_3dsprites_vecenv
 
 
@@ -471,9 +470,8 @@ class C2PO(pl.LightningModule):
                     if first_frame_overall:                    
                         # In this case there cannot be an action lambda so we set it to 0 mu and 0 var
                         N,_,K,_ = curr_action_lambda.shape[:]
-                        # foo = torch.cat((torch.zeros(N,1,K,self.action_dim, device=self.device), torch.ones(N,1,K,self.action_dim,device=self.device)*-1000),-1)
-                        foo = torch.zeros(N,1,K,self.action_dim*2, device=self.device)
-                        # foo = torch.cat((torch.zeros(N,1,K,self.action_dim, device=self.device), torch.ones(N,1,K,self.action_dim,device=self.device)*-torch.inf),-1)
+                      
+                        foo = torch.zeros(N,1,K,self.action_dim*2, device=self.device)          
                         curr_action_lambda = torch.cat((foo, curr_action_lambda[:,1:]),1)
                 mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1) #Here 2 is appropriate (rather than self.action_dim) as we're just splitting the tensor in 2            
                 
@@ -615,12 +613,7 @@ class C2PO(pl.LightningModule):
                                             
             post_mask = stable_softmax(pix_ll,1).view(N,F,K,1,H,W)
 
-            '''
-            Shouldn't all these inputs be detached (not just the grad's & likelihoods)? Right now, the rec's and masks are not detached, which means the decoder is being trained
-            not just to generate good outputs w.r.t. reconstruction loss, but also to provide good inputs to the refinement net, which isn't necessarily desirable, and also leads 
-            to a much deeper graph to backpropagate through.    
-            '''
-            
+                       
             im_inputs = torch.cat((
                 ims.unsqueeze(2).expand(N,F,K,C,H,W),
                 rec,
@@ -702,8 +695,7 @@ class C2PO(pl.LightningModule):
                 if first_frame_overall:
                     #This means the first frame in the input is the first frame overall and so there is no previous mask
                     rec, mask_logits, mask = self.decode(curr_lambda)                        
-                    first_prev_mask = torch.zeros(N,1,K,1,H,W, device=x.device)
-                    # first_prev_mask_logits = torch.ones(N,1,K,1,H,W, device=x.device)*-torch.inf
+                    first_prev_mask = torch.zeros(N,1,K,1,H,W, device=x.device)                    
                     first_prev_mask_logits = torch.ones(N,1,K,1,H,W, device=x.device) #This makes it so the sampling is random                    
                 else:
                     # Sample from q(s) and decode sample                                 
@@ -1043,7 +1035,7 @@ class C2PO(pl.LightningModule):
                                     this_action = obj_actions[i,k,:self.action_dim]
                                     if env.type=='2d': this_action = this_action/H
                                     action_field[i] = action_field[i] + this_mask.unsqueeze(0)*this_action.unsqueeze(-1)
-                                    # action_field
+                                    
                         action_field = action_field.view(N,self.action_dim,H,W)
 
                 else:
@@ -1264,7 +1256,7 @@ class C2PO(pl.LightningModule):
             targ_mu, targ_logsd = torch.chunk(targ_goal, 2, -1)
             pred_mu, pred_logsd = torch.chunk(pred_goal, 2, -1)
 
-            # goal_loss = (-pred_logsd.sum((1,2,3)) + 0.5*((-2*targ_logsd).exp()*((targ_mu-pred_mu)**2 + (2*pred_logsd).exp())).sum((1,2,3))).mean(0)            
+            
             goal_loss_per_latent = (-pred_logsd.sum((1,2)) + 0.5*((-2*targ_logsd).exp()*((targ_mu-pred_mu)**2 + (2*pred_logsd).exp())).sum((1,2))).mean(0)            
             goal_loss = goal_loss_per_latent.sum()                
             goal_mse  = ((targ_mu-pred_mu)**2).mean()            
@@ -1282,7 +1274,7 @@ class C2PO(pl.LightningModule):
 
                 foo = torch.cat((orig_ims,pred_goal_ims),1)
                 goal_grid = make_grid(foo.view(N*F*2,3,H,W), nrow=F)
-                # goal_grid = make_grid(pred_goal_ims.view(N*F,3,H,W), nrow=F)
+            
                 self.logger.experiment.add_image('goal_pred', goal_grid.cpu(), self.current_epoch)
                 del goal_grid, orig_rec, orig_ims, pred_rec, pred_goal_ims, pred_mask, orig_mask
 
