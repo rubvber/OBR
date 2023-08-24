@@ -266,6 +266,8 @@ class C2PO(pl.LightningModule):
             reg_D_lambda = (0.0,0.0),
             goal_trainer_mode = False,
             return_images = True,
+            ignore_goal_vel = False,
+            action_placement_method = 'ML',
         ):            
 
             
@@ -308,6 +310,8 @@ class C2PO(pl.LightningModule):
         self.reg_D_lambda = reg_D_lambda
         self.goal_trainer_mode = goal_trainer_mode
         self.return_images = return_images
+        self.ignore_goal_vel = ignore_goal_vel
+        self.action_placement_method = action_placement_method
         
         self.save_hyperparameters()
         
@@ -821,16 +825,19 @@ class C2PO(pl.LightningModule):
         
         if self.interactive:
             N = len(x[0])
-            if len(x)==2:
+            if len(x)==2:                
                 env = active_dsprites(data=x, num_sprites=x[0].shape[2])        
                 x, true_masks, prior_pref = env.render()                        
                 prior_pref = prior_pref.view(N,1)        
                 true_states = env.sprite_data.unsqueeze(1)    
                 true_bgc = env.bgcolor
+                env.type = '2d'
             if len(x)==3:
                 env = active_3dsprites_vecenv(ctx=x[2], init_data=x[:2])
-                x, true_masks = env.render()
+                x, true_masks = env.render(keep_render_env=True)
                 true_states, true_bgc = env.get_true_states()
+                true_states = true_states.unsqueeze(1)
+                env.type = '3d'
 
             _,C,H,W = x.shape[:]
             x=x.view(N,1,C,H,W)
@@ -853,7 +860,7 @@ class C2PO(pl.LightningModule):
                 self.planning_horizon=5
             onevec = torch.ones(self.planning_horizon, device=x.device)    
             d = torch.arange(1, self.planning_horizon+1, device=x.device)
-            row_idx, col_idx = torch.meshgrid(torch.arange(1, self.planning_horizon*self.action_dim+1, device=x.device),torch.arange(1, self.planning_horizon+1, device=x.device), indexing='ij')
+            row_idx, col_idx = torch.meshgrid(torch.arange(1, self.planning_horizon*2+1, device=x.device),torch.arange(1, self.planning_horizon+1, device=x.device), indexing='ij')
             omega_d = torch.max(torch.tensor(0, device=x.device), (row_idx+1)/2-col_idx+1).to(torch.int)*(row_idx%2) + (col_idx<=(row_idx/2))*(1-row_idx%2)                        
             Ww = torch.kron(omega_d, self.D.T.contiguous()) #Just calling this Ww since we already have a W                
    
@@ -991,7 +998,7 @@ class C2PO(pl.LightningModule):
                     if self.action_generation_type=='random':
                         action_field = env.get_random_action(env.a_sd)
                     elif self.action_generation_type=='goal':                 
-                        action_field = torch.zeros(N,2,H*W,device=x.device)                                                     
+                        action_field = torch.zeros(N,self.action_dim,H*W,device=x.device)                                                     
                        
                         mu_curr, _ = torch.split(iter_out_dict['final_lambda'][:,-1], self.n_latent*2, dim=-1)
                         _, mu_curr_prime = torch.chunk(mu_curr, 2, -1)                            
@@ -1002,10 +1009,14 @@ class C2PO(pl.LightningModule):
 
                             mu_pref, logsd_pref = torch.chunk(goal_lambda, 2, -1)
                             prec_pref = (logsd_pref*-2).exp()/100 
-                            prec_pref = torch.ones_like(prec_pref)
+                            if self.ignore_goal_vel:
+                                prec_pref = torch.ones_like(prec_pref)
+                                prec_pref[:,:,self.n_latent:] = self.ignore_goal_vel
+                            else:
+                                prec_pref = torch.ones_like(prec_pref)
                             logsd_pref = prec_pref.log()
                             for i in range(N):
-                                for k in range(self.K):
+                                for k in range(self.K):                                                                            
                                     L = torch.diag(torch.kron(onevec,(logsd_pref[i,k]*-2).exp()))
                                     WtL = Ww.T@L
                                     WLWiWL = torch.inverse((WtL@Ww + self.lambda_a*torch.eye(self.planning_horizon*self.action_dim,device=Ww.device)).to(torch.float32))@WtL 
@@ -1017,17 +1028,31 @@ class C2PO(pl.LightningModule):
                         curr_mask = iter_out_dict['mask']['prob'][:,-1].squeeze().view(N,K,-1) #N x K x H*W
                         for i in range(N):
                             for k in range(K):
-                                _, idx = torch.sort(curr_mask[i,k], descending=True)
-                                for j in range(len(idx)):
-                                    if action_field[i,0,idx[j]]==0:
-                                        action_field[i,:,idx[j]] = obj_actions[i,k,:self.action_dim]/H #Take the first action in the planned sequence. Divide by image size because it is currently in pixels and env.step() expects it as a fraction of image size
-                                        break
+                                if self.action_placement_method == 'ML':
+                                    _, idx = torch.sort(curr_mask[i,k], descending=True)
+                                    for j in range(len(idx)):
+                                        if action_field[i,0,idx[j]]==0:
+                                            if env.type=='2d':
+                                                action_field[i,:,idx[j]] = obj_actions[i,k,:self.action_dim]/H #Take the first action in the planned sequence. Divide by image size because it is currently in pixels and env.step() expects it as a fraction of image size
+                                            elif env.type=='3d':
+                                                action_field[i,:,idx[j]] = obj_actions[i,k,:self.action_dim] #Take the first action in the planned sequence. Divide by image size because it is currently in pixels and env.step() expects it as a fraction of image size
+                                            break
+                                elif self.action_placement_method == 'hedge':
+                                    this_mask = curr_mask[i,k]
+                                    this_mask = this_mask/this_mask.sum()
+                                    this_action = obj_actions[i,k,:self.action_dim]
+                                    if env.type=='2d': this_action = this_action/H
+                                    action_field[i] = action_field[i] + this_mask.unsqueeze(0)*this_action.unsqueeze(-1)
+                                    # action_field
                         action_field = action_field.view(N,self.action_dim,H,W)
 
                 else:
                     action_field = torch.zeros(N,self.action_dim,H,W,device=x.device)
                                 
-                env.step(action_field.detach())
+                if env.type=='2d':
+                    env.step(action_field.detach())
+                elif env.type=='3d':
+                    env.step(action_field.detach(), move_render_objs=True)
                 if self.heart_becomes_square>1 and win_pos+1==self.heart_becomes_square:                    
                     sd = env.sprite_data
                     for i in range(N):
@@ -1035,17 +1060,27 @@ class C2PO(pl.LightningModule):
                         sd[i,is_heart,3] = 1
                         env.sprite_data = sd
                     
-                im,true_mask,this_pref = env.render()                
+                if env.type=='2d':
+                    im,true_mask,this_pref = env.render()            
+                    prior_pref = torch.cat((prior_pref, this_pref.view(N,1)), 1)
+                    true_states = torch.cat((true_states, env.sprite_data.unsqueeze(1)), 1)
+                if env.type=='3d':
+                    im,true_mask = env.render(keep_render_env=True)       
+                    obj_data,_ = env.get_true_states()           
+                    true_states = torch.cat((true_states, obj_data.unsqueeze(1)), 1)
                 x = torch.cat((x,im.unsqueeze(1)), 1)
-                true_states = torch.cat((true_states, env.sprite_data.unsqueeze(1)), 1)
-                action_fields = torch.cat((action_fields,action_field.view(N,1,1,self.action_dim,H,W)*H), 1) #Multiply by image size because we work in pixels for legacy reasons. Should probably make everything consistent in future.
-                prior_pref = torch.cat((prior_pref, this_pref.view(N,1)), 1)
+                
+                if env.type=='2d':
+                    action_fields = torch.cat((action_fields,action_field.view(N,1,1,self.action_dim,H,W)*H), 1) #Multiply by image size because we work in pixels for legacy reasons. Should probably make everything consistent in future.
+                elif env.type=='3d':
+                    action_fields = torch.cat((action_fields,action_field.view(N,1,1,self.action_dim,H,W)), 1) 
+                
                 '''
                 The action fields we get from get_random_action are in coordinates of [0,1] rather than the pixel coordinates we get from getitem. Ideally we would
                 choose one fixed system for this, but for now let's just handle it like this. Most important thing is that the action passed to env.step() is *not* in pixel
                 coordinates, as it expects the [0,1] range ones so otherwise the sprites get teleported out of the image frame.               
                 '''
-                true_masks = torch.cat((true_masks,true_mask.unsqueeze(1)),1)
+                true_masks = torch.cat((true_masks,true_mask.view(N,1,H,W)),1)
                 
             
 
@@ -1112,8 +1147,12 @@ class C2PO(pl.LightningModule):
                 all_recs = torch.cat((all_recs, pred_rec), 1)
                 if self.interactive:
                     for i in range(num_predict):
-                        env.step()
-                        im,true_mask,pref = env.render()
+                        if env.type=='2d':
+                            env.step()
+                            im,true_mask,_ = env.render()
+                        elif env.type=='3d':
+                            env.step(move_render_objs=True)
+                            im,true_mask = env.render(keep_render_env=True)
                         x = torch.cat((x,im.unsqueeze(1)), 1)
                         true_masks = torch.cat((true_masks,true_mask.unsqueeze(1)), 1)
 
@@ -1121,6 +1160,10 @@ class C2PO(pl.LightningModule):
             total_loss, frame_final_losses, loss_steps = map(lambda x: x.detach(), (total_loss, frame_final_losses, loss_steps))
         else:
             if not total_loss.isfinite(): total_loss = None
+
+        if self.interactive:
+            if env.type=='3d':
+                env.destroy_render_envs()
 
         out_dict = {
             'total_loss': total_loss,        
