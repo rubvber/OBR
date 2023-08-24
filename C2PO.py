@@ -1,5 +1,5 @@
 from math import log, sqrt
-import pytorch_lightning as pl
+import pytorch_lightning as pl  
 import torch, sys
 from torch import nn
 import numpy as np
@@ -10,7 +10,6 @@ from sklearn.metrics import adjusted_rand_score
 from matplotlib import pyplot as plt
 
 from active_dsprites import active_dsprites
-sys.path.append('../AttentionExperiments/src/')
 from active_3dsprites import active_3dsprites_vecenv
 
 
