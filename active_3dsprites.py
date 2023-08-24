@@ -99,7 +99,7 @@ class active_3dsprites_dataset(Dataset):
             if t+1 <= (episode_length-1):
                 obj_actions = torch.zeros((self.ctx['num_objs']+1,3+3*self.ctx['with_rotation']))
                 action_field=torch.zeros(action_fields.shape[1:])
-                if self.ctx['rule_goal'] and t+1 >= episode_length-self.ctx['goal_frames']:
+                if self.ctx['rule_goal']!='None' and t+1 >= episode_length-self.ctx['goal_frames']:
                     if t+1 < episode_length-1:
                         frames_to_go = episode_length-(t+1)   #E.g. if the next frame is frame 9 in a 12-frame sequence, then given 0-indexing that is actually the 10th frame, and so there are 2 frames left to go                        
                         goal_pos    = self.goal[:,8:11]
@@ -611,11 +611,12 @@ class active_3dsprites_env():
 
 if __name__=="__main__":
     
+    import imageio
 
-    # dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [3,], 'episode_length': 12, 'with_rotation': True, 'bgcolor': 127})
+    dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [3,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127})
     
-    dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [0,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127, 
-                                        'action_frames': [2,4,6,8], 'rule_goal': 'IfHalfTorus', 'scale_min': 1.5, 'scale_max': 1.50001, 'goal_frames': 3})
+    # dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [0,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127, 
+    #                                     'action_frames': [2,4,6,8], 'rule_goal': 'IfHalfTorus', 'scale_min': 1.5, 'scale_max': 1.50001, 'goal_frames': 3})
                
     # dataset = active_3dsprites_dataset({
     #         'N': 512,
@@ -633,9 +634,13 @@ if __name__=="__main__":
     # dataloader = DataLoader(dataset, 16, num_workers=4)
     dataiter = iter(dataloader)
     
-    for i in range(2):
+    # for i in range(2):
         
-        foo = dataiter.next()           
-                
-        Image.fromarray((make_grid(foo[0].view(dataloader.batch_size*dataset.ctx['episode_length'],3,64,64), nrow=dataset.ctx['episode_length']).permute(1,2,0)*255).to(torch.uint8).numpy()).save('foo_rule-goal-IfHalfTorus_{}.png'.format(i))
+    foo = dataiter.next()           
+
+    for i in range(dataloader.batch_size):
+        im_list=torch.split(foo[0][i].squeeze(), 1, dim=0)
+        im_list=[Image.fromarray((x.squeeze().permute((1,2,0))*255).to(torch.uint8).numpy()) for x in im_list]
+        imageio.mimsave('3d_movie{}.gif'.format(i), im_list, 'GIF-PIL', fps=3, loop=0)          
+        
               
