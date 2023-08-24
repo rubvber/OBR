@@ -249,7 +249,7 @@ if __name__ == "__main__":
     parser.add_argument('--learning_rate', default=3e-4, type=float, help='Learning rate (automatically scaled so this is the effective learning rate given the effective batch size)')
     parser.add_argument('--im_sd', default=0.3, type=float, help='Image noise variance hyperparameter')
     parser.add_argument('--pred_sd', default=0.1, type=float, help='SD of prediction errors in the dynamics')    
-    parser.add_argument('--beta', default=1.0, type=float, help='Beta coefficient that multiplies the reconstruction (neg ll) term in the loss')    
+    parser.add_argument('--beta', default=5.0, type=float, help='Beta coefficient that multiplies the reconstruction (neg ll) term in the loss')    
     parser.add_argument('--precision', default=16, type=int, help='Precision of tensors')
     parser.add_argument('--val_batch_size', default=32, type=int, help='Batch size for validation - if not set this defaults to the value specified in batch_size')
     parser.add_argument('--val_predict', default=4, type=int, help='Number of frames to predict ahead at validation (output will be logged as images). If set to 0 no prediction is generated at all.')    
