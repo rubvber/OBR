@@ -4,12 +4,6 @@ from scipy.stats import norm
 from torch.utils.data import Dataset, DataLoader
 from math import ceil, floor
 import time
-from torch.nn import functional
-from shapely.geometry import Polygon, LineString
-from shapely import affinity
-from shapely.ops import nearest_points
-import glob, re
-from matplotlib import pyplot as plt
 import pymunk
 
 # def heart(t):
@@ -179,11 +173,7 @@ class active_dsprites(Dataset):
 
         # Initialize heart shape        
         self.heart_c = np.array(heart(np.linspace(0,2*np.pi, 100))).T 
-        # heart_c = np.array(heart(np.linspace(0,2*np.pi, 100))).T torch
-        # heart_c -= heart_c.min(0) #Normalize to range of [0, 1] (width and height)
-        # heart_c /= heart_c.max(0)
-        # heart_c -= 0.5 #Shift to [-0.5, 0.5]
-        # self.heart_c = heart_c
+
         
         if interactive and data is not None:              
             assert isinstance(data, tuple) or isinstance(data, list), 'Input data should be tuple or list of (sprite_data, bgcolor)'
@@ -194,51 +184,7 @@ class active_dsprites(Dataset):
         if self.sample_central_action_location:
             self.xy_grid = torch.stack(torch.meshgrid(torch.arange(1,im_size+1, device=self.device), torch.arange(1,im_size+1, device=self.device), indexing='ij'),-1)
 
-    #@profile
-    def is_colliding(self, obj1, obj2, pos1=None, pos2=None, scale1=None, scale2=None):
-        #Input positions should be not the shape centroids but the positions from sprite_data, as these are the centroids of the bounding squares
-        # if obj2.type=='LineString':
-        #     pass
-        # else:
-        #     if not any((pos1 is None, pos2 is None, scale1 is None, scale2 is None)):
-        #         d = ((pos2-pos1)**2).sum().sqrt()
-        #         if d < (scale1/2 + scale2/2 + self.collision_threshold*2):
-        #             return False
-
-        
-        if obj1.intersects(obj2):
-            return True
-        
-        # cp = nearest_points(obj1, obj2) 
-        # if cp[0].distance(cp[1]) < self.collision_threshold:
-        #     return True
-        
-        return False
-
-    #@profile        
-    def make_collision_models(self, shapes, scales, angles, pos):
-        objs = []
-        K = shapes.shape[0]
-        true_pos = torch.zeros_like(pos)
-        t = np.linspace(0, 2*np.pi,100)
-        for k in range(K):
-            if shapes[k]==1:                        
-                obj = Polygon([(-0.5,-0.5),(-0.5, 0.5),(0.5,0.5),(0.5,-0.5)])                        
-            elif shapes[k]==2:
-                x,y = ellipse(t)
-                obj = Polygon(np.stack((x,y),-1))
-            elif shapes[k]==3:
-                x,y = heart(t)
-                obj = Polygon(np.stack((x,y),-1))
-
-            obj = affinity.scale(obj, xfact=scales[k], yfact=scales[k])
-            obj = obj.buffer(self.collision_threshold/2)
-            obj = affinity.rotate(obj, angle=angles[k].item(), use_radians=True)
-            obj = affinity.translate(obj, xoff=pos[k,0], yoff=pos[k,1])
-            objs.append(obj)
-            true_pos[k] = torch.tensor([obj.centroid.x, obj.centroid.y]) #We need the true centers of mass to compute the collision dynamics
-        
-        return objs, true_pos
+  
 
     def make_collision_sim(self, sprite_data):
         #Makes collision simulation for a single environment instance, i.e. sprite_data should be 2-D with first dimension equal to K

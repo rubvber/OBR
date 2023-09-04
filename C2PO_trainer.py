@@ -310,11 +310,11 @@ if __name__ == "__main__":
 
     if False:
         args.threeD = False
-        args.debug_run = True
-        # args.gpus = [1,2,3,4,5,6,7,8]
-        args.gpus = [5,]
-        args.batch_size=8
-        args.val_batch_size=16
+        args.debug_run = False
+        args.gpus = [1,2,3,4]
+        # args.gpus = [5,]
+        args.batch_size=16
+        args.val_batch_size=32
         args.beta = 5.0
         args.reduceLR_factor = 0.333333
         args.with_rotation = False
@@ -324,7 +324,7 @@ if __name__ == "__main__":
         args.trans_pred=True
         args.ad_collisions=True
         args.logdir='C2PO_collision_logs'
-        # args.resume_from_checkpoint = '/home/rubber/C2PO/C2PO_collision_logs/lightning_logs/version_4/checkpoints/last.ckpt'
+        args.resume_from_checkpoint = '/home/rubber/C2PO/C2PO_collision_logs/lightning_logs/version_17/checkpoints/last.ckpt'
                 
     main(args)
 
