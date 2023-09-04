@@ -88,6 +88,7 @@ def main(args):
         'new_first_action_inf': args.new_first_action_inf,
         'reg_D_lambda': reg_D_lambda,
         'goal_trainer_mode': True if args.goal_train_data is not None else False,
+        'trans_pred': args.trans_pred,
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -185,6 +186,7 @@ def main(args):
                 bounding_actions=args.ad_bounding_actions,
                 rule_goal = args.ad_rule_goal,
                 rule_goal_actions= args.ad_rule_goal_actions,        
+                with_collisions = args.ad_collisions,
                 )
             active_dsprites_val = active_dsprites(
                 include_masks=True,         
@@ -198,6 +200,7 @@ def main(args):
                 bounding_actions=args.ad_bounding_actions if args.val_predict==0 else False,
                 rule_goal = args.ad_rule_goal,
                 rule_goal_actions= args.ad_rule_goal_actions,        
+                with_collisions = args.ad_collisions,
                 ) 
         
                     
@@ -299,24 +302,29 @@ if __name__ == "__main__":
     parser.add_argument('--new_first_action_inf', default=False, type=str2bool)
     parser.add_argument('--reg_D_lambda', default=(0.0,0.0), type=float, nargs=2, help='Hyperparameters for regularization of D-matrix (L1, L2)')
     parser.add_argument('--goal_train_data', default=None, type=str, help='Path to data for training goal network')
+    parser.add_argument('--trans_pred', default=False, type=str2bool)
+    parser.add_argument('--ad_collisions', default=False, type=str2bool)
 
     
     args = parser.parse_args()
 
     if False:
-        args.threeD = True
+        args.threeD = False
         args.debug_run = True
-        args.gpus = [5,]        
+        # args.gpus = [1,2,3,4,5,6,7,8]
+        args.gpus = [5,]
+        args.batch_size=8
+        args.val_batch_size=16
+        args.beta = 5.0
         args.reduceLR_factor = 0.333333
         args.with_rotation = False
         args.network_config = 'simple'
-        args.n_latent= 16
-        args.val_batch_size=16
-        args.ad_no_depth_motion=True
+        args.n_latent= 16        
         args.new_first_action_inf=True
-        args.goal_train_data = '/home/rubber/C2PO/goal_data/train_data_IfHalfTorus_vsd0_snellius-v65.pkl'
-        args.freeze_percept_net = True
-        args.init_percept_net_path = '/home/rubber/C2PO/snellius_checkpoints/version_65/checkpoints/last.ckpt'
-        args.with_goal_net=True
+        args.trans_pred=True
+        args.ad_collisions=True
+        args.logdir='C2PO_collision_logs'
+        # args.resume_from_checkpoint = '/home/rubber/C2PO/C2PO_collision_logs/lightning_logs/version_4/checkpoints/last.ckpt'
+                
     main(args)
 

@@ -611,36 +611,51 @@ class active_3dsprites_env():
 
 if __name__=="__main__":
     
-    import imageio
+    # import imageio
 
-    dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [3,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127})
+    # dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [3,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127})
     
-    # dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [0,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127, 
-    #                                     'action_frames': [2,4,6,8], 'rule_goal': 'IfHalfTorus', 'scale_min': 1.5, 'scale_max': 1.50001, 'goal_frames': 3})
+    # # dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [0,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127, 
+    # #                                     'action_frames': [2,4,6,8], 'rule_goal': 'IfHalfTorus', 'scale_min': 1.5, 'scale_max': 1.50001, 'goal_frames': 3})
                
-    # dataset = active_3dsprites_dataset({
-    #         'N': 512,
-    #         'interactive': True,            
-    #         'action_frames': [],            
-    #         'gpus': 9,
-    #         'with_rotation': False,
-    #         'scale_min': 1.5,
-    #         'scale_max': 1.50001,
-    #         'rand_seed0': 50000+10000+1234+4343,
-    #         'bgcolor': 127,                      
-    #     })
+    # # dataset = active_3dsprites_dataset({
+    # #         'N': 512,
+    # #         'interactive': True,            
+    # #         'action_frames': [],            
+    # #         'gpus': 9,
+    # #         'with_rotation': False,
+    # #         'scale_min': 1.5,
+    # #         'scale_max': 1.50001,
+    # #         'rand_seed0': 50000+10000+1234+4343,
+    # #         'bgcolor': 127,                      
+    # #     })
 
-    dataloader = DataLoader(dataset, 16, num_workers=0)
+    # dataloader = DataLoader(dataset, 16, num_workers=0)
+    # # dataloader = DataLoader(dataset, 16, num_workers=4)
+    # dataiter = iter(dataloader)
+    
+    # # for i in range(2):
+        
+    # foo = dataiter.next()           
+
+    # for i in range(dataloader.batch_size):
+    #     im_list=torch.split(foo[0][i].squeeze(), 1, dim=0)
+    #     im_list=[Image.fromarray((x.squeeze().permute((1,2,0))*255).to(torch.uint8).numpy()) for x in im_list]
+    #     imageio.mimsave('3d_movie{}.gif'.format(i), im_list, 'GIF-PIL', fps=3, loop=0)          
+
+    
+    dataset = active_3dsprites_dataset({'im_size': 256, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [3,], 'episode_length': 6, 'with_rotation': False, 'bgcolor': 127})
+    
+    dataloader = DataLoader(dataset, 32, num_workers=4)
     # dataloader = DataLoader(dataset, 16, num_workers=4)
     dataiter = iter(dataloader)
     
     # for i in range(2):
         
-    foo = dataiter.next()           
-
-    for i in range(dataloader.batch_size):
-        im_list=torch.split(foo[0][i].squeeze(), 1, dim=0)
-        im_list=[Image.fromarray((x.squeeze().permute((1,2,0))*255).to(torch.uint8).numpy()) for x in im_list]
-        imageio.mimsave('3d_movie{}.gif'.format(i), im_list, 'GIF-PIL', fps=3, loop=0)          
+    ims = dataiter.next()           
+    
+    from torchvision.utils import make_grid
+              
+    Image.fromarray((make_grid(ims[0].view(dataloader.batch_size*6,3,256,256), nrow=6).permute((1,2,0))*255).to(torch.uint8).numpy()).save('ad3_examples_4Pablo.png')
         
               

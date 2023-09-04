@@ -12,6 +12,8 @@ from matplotlib import pyplot as plt
 from active_dsprites import active_dsprites
 from active_3dsprites import active_3dsprites_vecenv
 
+from Attention import ScaledDotProductAttention
+
 
 def ismember(d, k):
   return [1 if (i in k) else 0 for i in d]
@@ -72,7 +74,15 @@ def FARI(targ, pred):
 
     return ARI_scores, FARI_scores
     
-    
+class STEFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return (input > 0).float()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
+
 
 
         
@@ -117,6 +127,44 @@ class GoalNet(nn.Module):
         
             
         return x
+
+class TransPredNet(nn.Module):
+    def __init__(self, n_latent = 16, hidden_size=64):
+        super().__init__()
+        
+        self.hidden_size=hidden_size
+
+        self.encoder = nn.Sequential(
+            nn.Linear(n_latent*3, hidden_size),
+            nn.ELU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ELU()
+        )  
+        self.att_layer = ScaledDotProductAttention(hidden_size, hidden_size)
+        self.decoder = nn.Sequential(
+            nn.ELU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ELU(),
+            nn.Linear(hidden_size, n_latent*2+1)
+        )
+
+
+    def forward(self, z):
+        N, F, K, L = z.shape #L here refers to the total latent dimension including states & derivatives (but not means and variances as these will be samples)
+
+        z = z.view(N*F*K,L)
+        z = self.encoder(z)
+        z = z.view(N*F,K,self.hidden_size) #Unfold slot dimension as slots are our tokens for the attention layer
+        z,_ = self.att_layer(z)
+        z = z.view(N*F*K,self.hidden_size)
+        z = self.decoder(z)
+        # z = torch.cat((z[:,:-1], torch.sigmoid(z[:,(-1,)])), -1)
+        z = torch.cat((z[:,:-1], STEFunction.apply(z[:,(-1,)])), -1)
+
+        return z.view(N,F,K,-1)
+
+
+
 
 
 class SBD(nn.Module):
@@ -267,6 +315,8 @@ class C2PO(pl.LightningModule):
             return_images = True,
             ignore_goal_vel = False,
             action_placement_method = 'ML',
+            trans_pred = False,
+            gate_loss_coeff = 10.0,
         ):            
 
             
@@ -311,6 +361,8 @@ class C2PO(pl.LightningModule):
         self.return_images = return_images
         self.ignore_goal_vel = ignore_goal_vel
         self.action_placement_method = action_placement_method
+        self.trans_pred = trans_pred
+        self.gate_loss_coeff = gate_loss_coeff
         
         self.save_hyperparameters()
         
@@ -344,8 +396,10 @@ class C2PO(pl.LightningModule):
             self.action_net = percept_net.action_net
 
             if hasattr(percept_net, 'D'):
-                self.D = percept_net.D                                        
-                                    
+                self.D = percept_net.D              
+
+            if hasattr(percept_net, 'trans_pred_net'):
+                self.trans_pred_net = percept_net.trans_pred_net                                    
 
             if not self.init_percept_net_path==self.init_goal_net_path:
                 del percept_net
@@ -371,7 +425,11 @@ class C2PO(pl.LightningModule):
             })            
                     
             self.D = nn.Parameter(torch.randn(self.action_dim,self.n_latent)*self.D_init_sd)                                              
-            self.action_net = ActionNet(vec_input_size=5*self.action_dim, out_size=2*self.action_dim)                                
+            self.action_net = ActionNet(vec_input_size=5*self.action_dim, out_size=2*self.action_dim)         
+
+            if trans_pred:
+                self.trans_pred_net = TransPredNet(n_latent=self.n_latent)
+                self.logsd_pred0 = nn.Parameter(torch.zeros(1,1,1,self.n_latent*2))
                 
         self.gumbel_tau={
                 'curr_tau': 1.0,
@@ -446,7 +504,7 @@ class C2PO(pl.LightningModule):
         '''
 
 
-        def predict(prev_lambda, curr_lambda=None, curr_action_lambda=None, action_fields=None, first_frame_overall=False):         
+        def predict(prev_lambda, curr_lambda=None, curr_action_lambda=None, action_fields=None, first_frame_overall=False, do_sample=True):         
             '''
          
             The output is the prediction of the current lamdba (based on the prev lambda and the curr action).
@@ -457,41 +515,110 @@ class C2PO(pl.LightningModule):
             '''
 
             assert not(curr_action_lambda is not None and action_fields is not None), 'Cannot provide both action lambda and action fields'
-            
+                
             mu_state_prev, mu_prime_prev, logsd_state_prev, logsd_prime_prev = torch.split(prev_lambda, self.n_latent, dim=-1)
             if curr_lambda is not None:            
                 _, mu_prime_curr, _, logsd_prime_curr = torch.split(curr_lambda, self.n_latent, dim=-1)
-            var_prime_prev = (2*logsd_prime_prev).exp()
-            mu_prime_pred = mu_prime_prev
-            var_prime_pred = var_prime_prev
-            
-            if curr_action_lambda is not None:
-                if self.new_first_action_inf:
-                    if first_frame_overall:                    
+
+            if self.trans_pred:
+                assert action_fields is None, 'Trans_pred only implemented with action inference'
+                assert self.new_first_action_inf, 'Trans_pred only implemented with new_first_action_inf'
+
+                prev_state_smp = mu_state_prev                
+                prev_prime_smp = mu_prime_prev  
+
+                if curr_action_lambda is None:
+                    N,F,K,_ = prev_lambda.shape
+                    curr_action_smp = torch.zeros((N,F,K,self.action_dim), device=self.device)
+                else:
+
+                    if first_frame_overall:    
                         # In this case there cannot be an action lambda so we set it to 0 mu and 0 var
                         N,_,K,_ = curr_action_lambda.shape[:]
-                      
+                    
                         foo = torch.zeros(N,1,K,self.action_dim*2, device=self.device)          
-                        curr_action_lambda = torch.cat((foo, curr_action_lambda[:,1:]),1)
-                mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1) #Here 2 is appropriate (rather than self.action_dim) as we're just splitting the tensor in 2            
-                
-                mu_prime_pred = mu_prime_pred + (self.D.view(1,1,1,self.action_dim,-1)*mu_action.unsqueeze(-1)).sum(-2)             
-                var_prime_pred = var_prime_pred + (self.D.view(1,1,1,self.action_dim,-1)**2*logsd_action.exp().unsqueeze(-1)**2).sum(-2)                
-        
-            if curr_lambda is None:
-                # If no curr_lamdba was supplied, then we'll use the predicted derivative to produce the state prediction
-                mu_state_pred = mu_state_prev + mu_prime_pred
-                var_state_pred = (2*logsd_state_prev).exp() + var_prime_pred
-            else:
-                mu_state_pred = mu_state_prev + mu_prime_curr
-                var_state_pred = (2*logsd_state_prev).exp() + (2*logsd_prime_curr).exp()
+                        curr_action_lambda = torch.cat((foo, curr_action_lambda[:,1:]),1)               
+                              
+                    mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1) #Here 2 is appropriate (rather than self.action_dim) as we're just splitting the tensor in 2            
+                    curr_action_smp = mu_action 
 
-            if mu_state_pred.ndim==var_state_pred.ndim+1:
-                var_state_pred=var_state_pred.unsqueeze(-1).expand_as(mu_state_pred)
-                var_prime_pred=var_prime_pred.unsqueeze(-1).expand_as(mu_prime_pred)
-                return torch.cat((mu_state_pred, mu_prime_pred, var_state_pred.log()*0.5, var_prime_pred.log()*0.5), -2)
-            else:
-                return torch.cat((mu_state_pred, mu_prime_pred, var_state_pred.log()*0.5, var_prime_pred.log()*0.5), -1)
+                if do_sample: 
+                    prev_state_smp = prev_state_smp + torch.randn_like(mu_state_prev)*logsd_state_prev.exp()
+                    prev_prime_smp = prev_prime_smp + torch.randn_like(mu_prime_prev)*logsd_prime_prev.exp()                
+                    if curr_action_lambda is not None:
+                        curr_action_smp = curr_action_smp + torch.randn_like(mu_action)*logsd_action.exp()
+
+                latent_space_action = (self.D.view(1,1,1,self.action_dim,-1)*curr_action_smp.unsqueeze(-1)).sum(-2)   
+                prime_pred = prev_prime_smp + latent_space_action
+                state_pred = prev_state_smp 
+                
+                if curr_lambda is not None:                    
+                    curr_prime_smp = mu_prime_curr
+                    if do_sample: curr_prime_smp = curr_prime_smp + torch.randn_like(mu_prime_curr)*logsd_prime_curr.exp()
+                    state_pred = state_pred + curr_prime_smp
+                else:
+                    #If no curr_lambda is available (because we are in pure prediction mode based only on the prev state), then we'll use the 
+                    #Predicted derivative to get our state prediction
+                    state_pred = state_pred + prime_pred
+                
+
+                pred_inputs = torch.cat((
+                    prev_state_smp,
+                    prev_prime_smp,                    
+                    latent_space_action,                    
+                ),-1)
+
+                trans_pred = self.trans_pred_net(pred_inputs) #These are sampled state predictions + gating probabilities
+
+                trans_pred_state, trans_pred_prime, trans_pred_gate = torch.split(trans_pred, [self.n_latent, self.n_latent, 1],-1)                
+                state_pred = (1-trans_pred_gate)*state_pred + trans_pred_gate*trans_pred_state
+                prime_pred = (1-trans_pred_gate)*prime_pred + trans_pred_gate*trans_pred_prime    
+
+                return torch.cat((state_pred, prime_pred), -1), trans_pred_gate
+                
+                # trans_pred_state, trans_pred_prime, trans_pred_gateprob = torch.split(trans_pred, [self.n_latent, self.n_latent, 1],-1)
+                # trans_pred_gatelogits = torch.stack((trans_pred_gateprob, 1-trans_pred_gateprob), -1).log()
+
+                # gate_smp = gumbel_sample(trans_pred_gatelogits, -1, include_sample_dim=False, tau=self.gumbel_tau['curr_tau'])        
+                # gate_smp = gate_smp[:,:,:,:,-1]        
+                # state_pred = (1-gate_smp)*state_pred + gate_smp*trans_pred_state
+                # prime_pred = (1-gate_smp)*prime_pred + gate_smp*trans_pred_prime    
+
+                return torch.cat((state_pred, prime_pred), -1), gate_smp
+                               
+            else:                               
+                
+                var_prime_prev = (2*logsd_prime_prev).exp()
+                mu_prime_pred = mu_prime_prev
+                var_prime_pred = var_prime_prev
+                
+                if curr_action_lambda is not None:
+                    if self.new_first_action_inf:
+                        if first_frame_overall:                    
+                            # In this case there cannot be an action lambda so we set it to 0 mu and 0 var
+                            N,_,K,_ = curr_action_lambda.shape[:]
+                        
+                            foo = torch.zeros(N,1,K,self.action_dim*2, device=self.device)          
+                            curr_action_lambda = torch.cat((foo, curr_action_lambda[:,1:]),1)
+                    mu_action, logsd_action = torch.chunk(curr_action_lambda, 2, dim=-1) #Here 2 is appropriate (rather than self.action_dim) as we're just splitting the tensor in 2            
+                    
+                    mu_prime_pred = mu_prime_pred + (self.D.view(1,1,1,self.action_dim,-1)*mu_action.unsqueeze(-1)).sum(-2)             
+                    var_prime_pred = var_prime_pred + (self.D.view(1,1,1,self.action_dim,-1)**2*logsd_action.exp().unsqueeze(-1)**2).sum(-2)                
+            
+                if curr_lambda is None:
+                    # If no curr_lamdba was supplied, then we'll use the predicted derivative to produce the state prediction
+                    mu_state_pred = mu_state_prev + mu_prime_pred
+                    var_state_pred = (2*logsd_state_prev).exp() + var_prime_pred
+                else:
+                    mu_state_pred = mu_state_prev + mu_prime_curr
+                    var_state_pred = (2*logsd_state_prev).exp() + (2*logsd_prime_curr).exp()
+
+                if mu_state_pred.ndim==var_state_pred.ndim+1:
+                    var_state_pred=var_state_pred.unsqueeze(-1).expand_as(mu_state_pred)
+                    var_prime_pred=var_prime_pred.unsqueeze(-1).expand_as(mu_prime_pred)
+                    return torch.cat((mu_state_pred, mu_prime_pred, var_state_pred.log()*0.5, var_prime_pred.log()*0.5), -2)
+                else:
+                    return torch.cat((mu_state_pred, mu_prime_pred, var_state_pred.log()*0.5, var_prime_pred.log()*0.5), -1)
 
         
         def compute_loss(in_dict):
@@ -517,10 +644,17 @@ class C2PO(pl.LightningModule):
                 '''
                 use_frames = range(1,F)   
 
-
-
             mu_curr, logsd_curr = torch.split(curr_lambda, self.n_latent*2, dim=3)
-            mu_pred, logsd_pred = torch.split(pred_lambda, self.n_latent*2, dim=3)
+            if self.trans_pred:
+                pred, gate_smp = in_dict['pred_lambda'][:]
+                # state_pred, prime_pred = torch.split(in_dict['pred_lambda'][0], self.n_latent, dim=-1)
+                # gate_smp = in_dict=['pred_lamdba'][1]          
+                if in_dict['first_frame_overall']:                    
+                    pred = torch.cat((torch.zeros(N,1,K,self.n_latent*2, device=x.device), pred[:,1:]), dim=1) #If this is the first frame overall then there can be no prediction
+                state_smp = mu_curr + logsd_curr.exp()*torch.randn_like(mu_curr)                
+            else:                
+                mu_pred, logsd_pred = torch.split(pred_lambda, self.n_latent*2, dim=3)
+            
             if curr_action_lambda is None:
                 logsd_action = torch.tensor([], device=x.device)
             else:
@@ -541,18 +675,23 @@ class C2PO(pl.LightningModule):
 
             gaussian_entropy = 0.5*(1.0 + log(2*np.pi) + 2*torch.cat((logsd_curr, logsd_action), -1)).sum((2,3)) 
             
-            if mu_pred.ndim==mu_curr.ndim+1:
-                mu_curr, logsd_curr, sigma_s = map(lambda x: x.unsqueeze(-1), (mu_curr, logsd_curr, sigma_s))
+            
                                     
-               
-            prediction_CE = (0.5*log(2*np.pi) + sigma_s.log() + 0.5*sigma_s**-2*((mu_curr-mu_pred)**2 + logsd_curr.exp()**2 + logsd_pred.exp()**2)).sum(3) #Don't sum over slots yet      
+            if self.trans_pred:
+                prediction_CE = (0.5*log(2*np.pi) + sigma_s.log() + 0.5*sigma_s**-2*(state_smp-pred)**2).sum(3) #Don't sum over slots yet                      
+                del state_smp, pred, mu_curr, logsd_curr
+            else:
+                if mu_pred.ndim==mu_curr.ndim+1:
+                    mu_curr, logsd_curr, sigma_s = map(lambda x: x.unsqueeze(-1), (mu_curr, logsd_curr, sigma_s))
+                prediction_CE = (0.5*log(2*np.pi) + sigma_s.log() + 0.5*sigma_s**-2*((mu_curr-mu_pred)**2 + logsd_curr.exp()**2 + logsd_pred.exp()**2)).sum(3) #Don't sum over slots yet      
+                del mu_curr, mu_pred, logsd_curr, logsd_pred     
 
             if prediction_CE.ndim==4: 
                 prediction_CE=prediction_CE.sum(2).mean(-1)   
             else:
                 prediction_CE=prediction_CE.sum(2)
 
-            del mu_curr, mu_pred, logsd_curr, logsd_pred     
+            
      
             
             mask_sample = gumbel_sample(prev_mask_logits[:,use_frames], dim=2, tau=self.gumbel_tau['curr_tau'], n=self.num_mask_samples, include_sample_dim=True)
@@ -568,6 +707,10 @@ class C2PO(pl.LightningModule):
                 
         
             loss_per_im = -gaussian_entropy + prediction_CE + self.beta*rec_loss + action_loss
+            if self.trans_pred: 
+                gate_loss = gate_smp.sum((2,3))
+                loss_per_im = loss_per_im + gate_loss*self.gate_loss_coeff            
+                mean_gate = gate_smp.mean()
             loss = loss_per_im.mean(0) #Mean rather than sum so that it doesn't depend on batch size                        
             
             out_dict = {
@@ -575,10 +718,12 @@ class C2PO(pl.LightningModule):
                 'rec_loss': rec_loss.mean(0),
                 'pred_loss': prediction_CE.mean(0),
                 'negent_loss': -gaussian_entropy.mean(0),
-                'action_loss': action_loss.mean(0),
+                'action_loss': action_loss.mean(0),                
                 'pix_ll': pix_ll,
                 'pix_like': pix_like,
                 'loss_per_im': loss_per_im,
+                'gate_loss': gate_loss.mean(0) if self.trans_pred else None,
+                'mean_gate': mean_gate if self.trans_pred else None,
                 }
                         
             return out_dict
@@ -675,6 +820,9 @@ class C2PO(pl.LightningModule):
             pred_losses = torch.zeros((F,num_steps+1), device=x.device)
             negent_losses = torch.zeros((F,num_steps+1), device=x.device)
             action_losses = torch.zeros((F,num_steps+1), device=x.device)
+            if self.trans_pred:
+                gate_losses = torch.zeros((F,num_steps+1), device=x.device)
+                mean_gates = torch.zeros_like(gate_losses)
 
             if first_prev_lambda is None:
                 #This means we didn't receive a previous lambda and will use the prior instead for the first frame
@@ -711,7 +859,7 @@ class C2PO(pl.LightningModule):
 
                 '''
                 Generate predictions. We now generate them for the *current* time points, based on the *previous* state lambdas and *current*
-                action lambdas. This means that we *always* need to (re-)generxate predictions, and there is no need to generate a prediction
+                action lambdas. This means that we *always* need to (re-)generate predictions, and there is no need to generate a prediction
                 for a new-to-be-added time point if we have reached the end of this iteration sequence.               
                 '''
 
@@ -739,6 +887,9 @@ class C2PO(pl.LightningModule):
                 action_losses[:,t] = cl_dict['action_loss']
                 negent_losses[:,t] = cl_dict['negent_loss']
                 losses_per_im[:,:,t] = cl_dict['loss_per_im']
+                if self.trans_pred:       
+                    mean_gates[:,t] = cl_dict['mean_gate'].detach() 
+                    gate_losses[:,t] = cl_dict['gate_loss'].detach()
 
                 #Generate inputs for refinement net update
                 if t < num_steps:                        
@@ -755,7 +906,7 @@ class C2PO(pl.LightningModule):
                         'curr_action_lambda': curr_action_lambda,
                         'pred_loss': cl_dict['pred_loss'].sum(),
                         'prev_lambda': prev_lambda,
-                        'x_diff': x_diff,
+                        'x_diff': x_diff,                      
                     })
                                         
                 
@@ -799,6 +950,8 @@ class C2PO(pl.LightningModule):
                 'pred_losses': pred_losses.detach(),
                 'negent_losses': negent_losses.detach(),
                 'action_losses': action_losses.detach(),
+                'gate_losses': gate_losses if self.trans_pred else None,
+                'mean_gates': mean_gates if self.trans_pred else None,
                 'losses_per_im': losses_per_im.detach(),
                 'final_h': curr_h,
                 'final_c': curr_c,
@@ -807,7 +960,7 @@ class C2PO(pl.LightningModule):
                 'final_action_c': curr_action_c,
                 'final_action_lambda': curr_action_lambda,                
                 'rec': rec_comb,
-                'mask': mask,                
+                'mask': mask,                                
             }
             
 
@@ -878,6 +1031,10 @@ class C2PO(pl.LightningModule):
         all_lambdas = torch.ones((N,maxF,K,self.tot_n_latent), device=x.device)*torch.nan
         if self.with_goal_net:
             all_pref_lambdas = torch.zeros((N,maxF,K,self.tot_n_latent), device=x.device)        
+
+        if self.trans_pred:
+            all_gate_losses = [list() for _ in range(maxF)]        
+            all_mean_gates = [list() for _ in range(maxF)]        
         
         max_win_pos = maxF-1 + win_size-1
         # win_pos is defined as the position of the leading frame.
@@ -915,19 +1072,17 @@ class C2PO(pl.LightningModule):
                 new_win_idx_in_old_win = np.where(logical_idx)[0] #Indexes in old window of time points that are in new window                
                 assert np.logical_not(logical_idx).sum()<=1, 'Discrepancy with previous window is more than 1 frame - something is wrong!'                                
                       
-                if prev_win_end < win_end:                             
+                if prev_win_end < win_end:             
                     exp_action = (iter_out_dict['mask']['prob'][:,(-1,)]*this_action_fields[:,(-1,)]).sum((4,5))
                     new_init_action_lambda = torch.cat((exp_action, torch.zeros((N,1,K,self.action_dim), device=x.device, requires_grad=True)),-1)
                     init_action_lambda = torch.cat((iter_out_dict['final_action_lambda'][:,new_win_idx_in_old_win], new_init_action_lambda),1)
                     init_action_h = torch.cat((iter_out_dict['final_action_h'][:,new_win_idx_in_old_win], torch.zeros(N,1,K,32, device=x.device)),1)
                     init_action_c = torch.cat((iter_out_dict['final_action_c'][:,new_win_idx_in_old_win], torch.zeros(N,1,K,32, device=x.device)),1)
-                else:
-                    init_action_lambda = iter_out_dict['final_action_lambda'][:,new_win_idx_in_old_win]
-                    init_action_h = iter_out_dict['final_action_h'][:,new_win_idx_in_old_win]
-                    init_action_c = iter_out_dict['final_action_c'][:,new_win_idx_in_old_win]
-                                        
-                if prev_win_end < win_end:          
-                    next_pred_lambda = predict(iter_out_dict['final_lambda'][:,(-1,),:,:self.n_latent*4], curr_action_lambda=new_init_action_lambda)
+
+                    next_pred_lambda = predict(iter_out_dict['final_lambda'][:,(-1,),:,:self.n_latent*4], curr_action_lambda=new_init_action_lambda, do_sample=False)
+                    if self.trans_pred:
+                        next_pred_lambda = torch.cat((next_pred_lambda[0], self.logsd_pred0.expand_as(next_pred_lambda[0])),-1)
+                    
                     init_lambda = torch.cat((iter_out_dict['final_lambda'][:,new_win_idx_in_old_win], next_pred_lambda),1)
                     init_h = torch.cat((iter_out_dict['final_h'][:,new_win_idx_in_old_win], self.h0.view(1,1,1,-1).expand(N,1,K,-1)),1)
                     init_c = torch.cat((iter_out_dict['final_c'][:,new_win_idx_in_old_win], torch.zeros((N,1,K,self.h0.shape[-1]),device=x.device)),1)
@@ -935,6 +1090,10 @@ class C2PO(pl.LightningModule):
                     init_lambda = iter_out_dict['final_lambda'][:,new_win_idx_in_old_win]
                     init_h = iter_out_dict['final_h'][:,new_win_idx_in_old_win]
                     init_c = iter_out_dict['final_c'][:,new_win_idx_in_old_win]
+
+                    init_action_lambda = iter_out_dict['final_action_lambda'][:,new_win_idx_in_old_win]
+                    init_action_h = iter_out_dict['final_action_h'][:,new_win_idx_in_old_win]
+                    init_action_c = iter_out_dict['final_action_c'][:,new_win_idx_in_old_win]
                         
             init_lambda = torch.cat((init_lambda, init_action_lambda),-1)        
             init_h = torch.cat((init_h, init_action_h),-1)       
@@ -1109,6 +1268,9 @@ class C2PO(pl.LightningModule):
                 all_pred_losses[frame_idx].extend(list(iter_out_dict['pred_losses'][f,include_iters])) 
                 all_negent_losses[frame_idx].extend(list(iter_out_dict['negent_losses'][f,include_iters])) 
                 all_action_losses[frame_idx].extend(list(iter_out_dict['action_losses'][f,include_iters])) 
+                if self.trans_pred:
+                    all_gate_losses[frame_idx].extend(list(iter_out_dict['gate_losses'][f,include_iters])) 
+                    all_mean_gates[frame_idx].extend(list(iter_out_dict['mean_gates'][f,include_iters])) 
                 all_losses_per_im[frame_idx] = torch.cat((all_losses_per_im[frame_idx], iter_out_dict['losses_per_im'][:,f,include_iters]), -1)
                 
         iter_lengths = [len(foo) for foo in all_losses]
@@ -1127,11 +1289,12 @@ class C2PO(pl.LightningModule):
         loss_steps = all_losses_tensor.nanmean(0)
         
         if num_predict>0:
-            with torch.no_grad():
-                pred_lambda = torch.zeros((N,num_predict,K,self.n_latent*4), device=x.device)                
-                pred_lambda[:,0] = predict(iter_out_dict['final_lambda'][:,-1,:,:self.n_latent*4]) 
-                for i in range(1,num_predict):
-                    pred_lambda[:,i] = predict(pred_lambda[:,i-1,:,:self.n_latent*4])
+            with torch.no_grad():                
+                pred_size = self.n_latent*2 if self.trans_pred else self.n_latent*4
+                pred_lambda = torch.ones((N,num_predict,K,self.n_latent*4), device=x.device)*torch.nan
+                pred_lambda[:,(0,),:, :pred_size], *_ = predict(iter_out_dict['final_lambda'][:,(-1,),:,:self.n_latent*4], do_sample=False) #do_sample is only relevant for trans_pred                                                         
+                for i in range(1,num_predict):                        
+                    pred_lambda[:,(i,),:, :pred_size], *_ = predict(pred_lambda[:,(i-1,),:,:self.n_latent*4], do_sample=False)
                     
 
                 pred_rec,pred_mask,_ = self.decode(pred_lambda, do_sample=False)
@@ -1165,6 +1328,8 @@ class C2PO(pl.LightningModule):
             'loss_pred': torch.tensor([foo[-1] for foo in all_pred_losses]).mean(),
             'loss_negent': torch.tensor([foo[-1] for foo in all_negent_losses]).mean(),
             'loss_action': torch.tensor([foo[-1] for foo in all_action_losses]).mean(),
+            'loss_gate': torch.tensor([foo[-1] for foo in all_gate_losses]).mean() if self.trans_pred else None,
+            'mean_gate': torch.tensor([foo[-1] for foo in all_mean_gates]).mean() if self.trans_pred else None,
             'rec': all_recs if self.return_images else None,            
             'mask': all_masks if self.return_images else None,            
             'final_lambda': all_lambdas,            
@@ -1202,7 +1367,7 @@ class C2PO(pl.LightningModule):
 
         if not self.interactive:
             if isinstance(batch, list):
-                ims, _, action_fields = batch[:]
+                ims, _, action_fields, *_ = batch[:]
          
             out_dict = self.forward(
                 ims,
@@ -1240,6 +1405,12 @@ class C2PO(pl.LightningModule):
             'train_loss_action': out_dict['loss_action'],
             'curr_tau': self.gumbel_tau['curr_tau'],  
         }, sync_dist=True)            
+
+        if self.trans_pred:
+            self.log_dict({
+                'train_loss_gate': out_dict['loss_gate'],
+                'train_mean_gate': out_dict['mean_gate']
+            }, sync_dist=True)
         
         if out_dict['total_loss'] is not None: self.log('train_loss_cumul', out_dict['total_loss'], sync_dist=True)
         if hasattr(self, 'log_sigma_chi'): self.log('sigma_chi', self.sigma_chi, sync_dist=True)
@@ -1282,7 +1453,7 @@ class C2PO(pl.LightningModule):
 
         if not self.interactive:
             
-            ims, true_masks, action_fields = batch[:]
+            ims, true_masks, action_fields, *_ = batch[:]
 
             if self.val_predict==0:
                 end_idx = ims.shape[1]
@@ -1363,6 +1534,12 @@ class C2PO(pl.LightningModule):
             'F-ARI': FARI_scores.mean(),
             'latent_sd_avg': (2*logsd.exp()).sqrt().mean(),
         }, sync_dist=True) 
+
+        if self.trans_pred:
+            self.log_dict({
+                'val_loss_gate': out_dict['loss_gate'],
+                'val_mean_gate': out_dict['mean_gate']
+            }, sync_dist=True)            
 
         for i in range(self.D.shape[0]):
             for j in range(self.D.shape[1]):
@@ -1502,6 +1679,8 @@ class C2PO(pl.LightningModule):
         pars = []
         if not self.freeze_percept_net:
             pars.extend([*self.refine_net.parameters(), *self.decoder.parameters(), self.D, *self.action_net.parameters(), self.lambda0])            
+            if self.trans_pred:
+                pars.extend([*self.trans_pred_net.parameters(), self.logsd_pred0])
         
         if self.with_goal_net:
             pars.extend([*self.goal_net.parameters()])
