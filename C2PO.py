@@ -155,7 +155,7 @@ class TransPredNet(nn.Module):
         N, F, K, L = z.shape #L here refers to the total latent dimension including states & derivatives (but not means and variances as these will be samples)
 
         if self.res: 
-            z0 = z.clone()
+            z0 = z[:,:,:,:L//3*2].clone().view(N*F*K,-1)
         else:
             z0 = 0.0
 

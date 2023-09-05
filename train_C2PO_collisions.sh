@@ -5,4 +5,4 @@ python C2PO_trainer.py --gpus 1 2 3 4  --beta 5.0  --new_first_action_inf True -
 
 
 #v20 is with logsd0 fixed
-#v21 is with logsd0 fixed and multi-head (4) attention
+#v25 is with logsd0 fixed and multi-head (4) attention
