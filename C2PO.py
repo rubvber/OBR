@@ -129,10 +129,11 @@ class GoalNet(nn.Module):
         return x
 
 class TransPredNet(nn.Module):
-    def __init__(self, n_latent = 16, hidden_size=64):
+    def __init__(self, n_latent = 16, hidden_size=64, res=False):
         super().__init__()
         
         self.hidden_size=hidden_size
+        self.res = res
 
         self.encoder = nn.Sequential(
             nn.Linear(n_latent*3, hidden_size),
@@ -153,6 +154,11 @@ class TransPredNet(nn.Module):
     def forward(self, z):
         N, F, K, L = z.shape #L here refers to the total latent dimension including states & derivatives (but not means and variances as these will be samples)
 
+        if self.res: 
+            z0 = z.clone()
+        else:
+            z0 = 0.0
+
         z = z.view(N*F*K,L)
         z = self.encoder(z)
         z = z.view(N*F,K,self.hidden_size) #Unfold slot dimension as slots are our tokens for the attention layer
@@ -160,7 +166,9 @@ class TransPredNet(nn.Module):
         z = z.view(N*F*K,self.hidden_size)
         z = self.decoder(z)
         # z = torch.cat((z[:,:-1], torch.sigmoid(z[:,(-1,)])), -1)
-        z = torch.cat((z[:,:-1], STEFunction.apply(z[:,(-1,)])), -1)
+        
+        z = torch.cat((z[:,:-1]+z0, STEFunction.apply(z[:,(-1,)])), -1)
+        
 
         return z.view(N,F,K,-1)
 
@@ -317,7 +325,8 @@ class C2PO(pl.LightningModule):
             ignore_goal_vel = False,
             action_placement_method = 'ML',
             trans_pred = False,
-            gate_loss_coeff = 10.0,
+            trans_pred_res = False,
+            gate_loss_coeff = 10.0,            
         ):            
 
             
@@ -363,7 +372,8 @@ class C2PO(pl.LightningModule):
         self.ignore_goal_vel = ignore_goal_vel
         self.action_placement_method = action_placement_method
         self.trans_pred = trans_pred
-        self.gate_loss_coeff = gate_loss_coeff
+        self.trans_pred_res = trans_pred_res
+        self.gate_loss_coeff = gate_loss_coeff        
         
         self.save_hyperparameters()
         
@@ -429,7 +439,7 @@ class C2PO(pl.LightningModule):
             self.action_net = ActionNet(vec_input_size=5*self.action_dim, out_size=2*self.action_dim)         
 
             if trans_pred:
-                self.trans_pred_net = TransPredNet(n_latent=self.n_latent)
+                self.trans_pred_net = TransPredNet(n_latent=self.n_latent, res = self.trans_pred_res)
                 self.logsd_pred0 = nn.Parameter(torch.zeros(1,1,1,self.n_latent*2))                
                 
         self.gumbel_tau={
