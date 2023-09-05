@@ -24,7 +24,11 @@ class ScaledDotProductAttention(nn.Module):
     def __init__(self, dim: int, d_k=64):
         super(ScaledDotProductAttention, self).__init__()
         self.sqrt_d_k = math.sqrt(d_k)
-        self.wq, self.wk, self.wv = [nn.Linear(dim,d_k) for _ in range(3)]
+        # self.wq, self.wk, self.wv = [nn.Linear(dim,d_k) for _ in range(3)]
+
+        self.wq = nn.Linear(dim,d_k)
+        self.wk = nn.Linear(dim,d_k)
+        self.wv = nn.Linear(dim,d_k)
   
     def forward(self, x):
 
@@ -46,7 +50,11 @@ class MultiHeadAttention(nn.Module):
         self.sqrt_d_k = math.sqrt(d_k)
         self.num_heads = num_heads
         self.d_k = d_k
-        self.wq, self.wk, self.wv = [nn.Linear(in_dim,d_k*num_heads) for _ in range(3)]
+        # self.wq, self.wk, self.wv = [nn.Linear(in_dim,d_k*num_heads) for _ in range(3)]
+
+        self.wq = nn.Linear(in_dim,d_k*num_heads)
+        self.wk = nn.Linear(in_dim,d_k*num_heads)
+        self.wv = nn.Linear(in_dim,d_k*num_heads)
 
     def forward(self, x):
         N,K = x.shape[:2]
@@ -59,6 +67,6 @@ class MultiHeadAttention(nn.Module):
         
         attn = score.softmax(-2)
 
-        context = ((attn.unsqueeze(-2) * value.unsqueeze(2)).sum(2)).view(N,K,self.d_k*self.num_heads)
+        context = ((attn.unsqueeze(-2) * value.unsqueeze(1)).sum(2)).view(N,K,self.d_k*self.num_heads)
         
         return context, attn
