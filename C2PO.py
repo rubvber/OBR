@@ -138,6 +138,8 @@ class TransPredNet(nn.Module):
             self.gate = lambda x: STEFunction.apply(x)
         elif gate=='Sigmoid':
             self.gate = torch.nn.Sigmoid()
+        elif gate=='ReTanh':
+            self.gate = lambda x: torch.max(torch.zeros(1, device=x.device), x.tanh())
         
 
         self.encoder = nn.Sequential(
@@ -731,9 +733,9 @@ class C2PO(pl.LightningModule):
         
             loss_per_im = -gaussian_entropy + prediction_CE + self.beta*rec_loss + action_loss
             if self.trans_pred: 
-                if self.trans_pred_gate=='Sigmoid':
+                if self.trans_pred_gate=='ReTanh':
                     gate_loss = STEFunction.apply(gate_smp).sum((2,3))
-                elif self.trans_pred_gate=='HeavySide':
+                elif self.trans_pred_gate=='HeavySide' or self.trans_pred_gate=='Sigmoid':
                     gate_loss = gate_smp.sum((2,3))
                 loss_per_im = loss_per_im + gate_loss*self.gate_loss_coeff            
                 mean_gate = gate_smp.mean()

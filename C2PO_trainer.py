@@ -314,10 +314,10 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    if True:
+    if False:
         args.threeD = False
         args.debug_run = True
-        args.gpus = [2,]
+        args.gpus = [3,]
         # args.gpus = [5,]
         args.batch_size=4
         args.val_batch_size=4
@@ -329,11 +329,11 @@ if __name__ == "__main__":
         args.new_first_action_inf=True
         args.trans_pred=True
         args.trans_pred_res = True
-        args.trans_pred_gate = 'Sigmoid'
+        args.trans_pred_gate = 'ReTanh'
         args.ad_collisions=True
         args.logdir='C2PO_collision_logs'
-        args.gate_loss_coeff=100.0
-        # args.resume_from_checkpoint = '/home/rubber/C2PO/C2PO_collision_logs/lightning_logs/version_17/checkpoints/last.ckpt'
+        args.gate_loss_coeff=10.0
+        # args.resume_from_checkpoint = '/home/rubber/C2PO/snellius_checkpoints/collisions/version_6/checkpoints/last.ckpt'
                 
     main(args)
 
