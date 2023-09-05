@@ -90,6 +90,7 @@ def main(args):
         'goal_trainer_mode': True if args.goal_train_data is not None else False,
         'trans_pred': args.trans_pred,
         'trans_pred_res': args.trans_pred_res,
+        'trans_pred_gate': args.trans_pred_gate,
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -305,6 +306,7 @@ if __name__ == "__main__":
     parser.add_argument('--goal_train_data', default=None, type=str, help='Path to data for training goal network')
     parser.add_argument('--trans_pred', default=False, type=str2bool)
     parser.add_argument('--trans_pred_res', default=False, type=str2bool)
+    parser.add_argument('--trans_pred_gate', default='HeavySide', type=str)
     parser.add_argument('--ad_collisions', default=False, type=str2bool)
 
     
@@ -325,6 +327,7 @@ if __name__ == "__main__":
         args.new_first_action_inf=True
         args.trans_pred=True
         args.trans_pred_res = True
+        args.trans_pred_gate = 'Sigmoid'
         args.ad_collisions=True
         args.logdir='C2PO_collision_logs'
         # args.resume_from_checkpoint = '/home/rubber/C2PO/C2PO_collision_logs/lightning_logs/version_17/checkpoints/last.ckpt'

@@ -129,11 +129,16 @@ class GoalNet(nn.Module):
         return x
 
 class TransPredNet(nn.Module):
-    def __init__(self, n_latent = 16, hidden_size=64, res=False):
+    def __init__(self, n_latent = 16, hidden_size=64, res=False, gate='HeavySide'):
         super().__init__()
         
         self.hidden_size=hidden_size
         self.res = res
+        if gate=='HeavySide':
+            self.gate = lambda x: STEFunction.apply(x)
+        elif gate=='Sigmoid':
+            self.gate = torch.nn.Sigmoid()
+        
 
         self.encoder = nn.Sequential(
             nn.Linear(n_latent*3, hidden_size),
@@ -167,7 +172,7 @@ class TransPredNet(nn.Module):
         z = self.decoder(z)
         # z = torch.cat((z[:,:-1], torch.sigmoid(z[:,(-1,)])), -1)
         
-        z = torch.cat((z[:,:-1]+z0, STEFunction.apply(z[:,(-1,)])), -1)
+        z = torch.cat((z[:,:-1]+z0, self.gate(z[:,(-1,)])), -1)
         
 
         return z.view(N,F,K,-1)
@@ -326,6 +331,7 @@ class C2PO(pl.LightningModule):
             action_placement_method = 'ML',
             trans_pred = False,
             trans_pred_res = False,
+            trans_pred_gate = 'HeavySide',
             gate_loss_coeff = 10.0,            
         ):            
 
@@ -374,6 +380,7 @@ class C2PO(pl.LightningModule):
         self.trans_pred = trans_pred
         self.trans_pred_res = trans_pred_res
         self.gate_loss_coeff = gate_loss_coeff        
+        self.trans_pred_gate = trans_pred_gate
         
         self.save_hyperparameters()
         
@@ -439,7 +446,7 @@ class C2PO(pl.LightningModule):
             self.action_net = ActionNet(vec_input_size=5*self.action_dim, out_size=2*self.action_dim)         
 
             if trans_pred:
-                self.trans_pred_net = TransPredNet(n_latent=self.n_latent, res = self.trans_pred_res)
+                self.trans_pred_net = TransPredNet(n_latent=self.n_latent, res = self.trans_pred_res, gate=self.trans_pred_gate)
                 self.logsd_pred0 = nn.Parameter(torch.zeros(1,1,1,self.n_latent*2))                
                 
         self.gumbel_tau={
@@ -554,10 +561,15 @@ class C2PO(pl.LightningModule):
                     curr_action_smp = mu_action 
 
                 if do_sample: 
-                    prev_state_smp = prev_state_smp + torch.randn_like(mu_state_prev)*logsd_state_prev.exp()
+                    prev_state_smp = prev_state_smp + torch.randn_like(mu_state_prev)*logsd_state_prev.exp() 
                     prev_prime_smp = prev_prime_smp + torch.randn_like(mu_prime_prev)*logsd_prime_prev.exp()                
                     if curr_action_lambda is not None:
                         curr_action_smp = curr_action_smp + torch.randn_like(mu_action)*logsd_action.exp()
+
+                prev_state_smp = torch.clamp(prev_state_smp, -1000,1000) #Clamp for numerical stability
+                prev_prime_smp = torch.clamp(prev_prime_smp, -1000,1000)
+                curr_action_smp = torch.clamp(curr_action_smp, -1000,1000)
+                
 
                 latent_space_action = (self.D.view(1,1,1,self.action_dim,-1)*curr_action_smp.unsqueeze(-1)).sum(-2)   
                 prime_pred = prev_prime_smp + latent_space_action
@@ -719,7 +731,10 @@ class C2PO(pl.LightningModule):
         
             loss_per_im = -gaussian_entropy + prediction_CE + self.beta*rec_loss + action_loss
             if self.trans_pred: 
-                gate_loss = gate_smp.sum((2,3))
+                if self.trans_pred_gate=='Sigmoid':
+                    gate_loss = STEFunction.apply(gate_smp).sum((2,3))
+                elif self.trans_pred_gate=='HeavySide':
+                    gate_loss = gate_smp.sum((2,3))
                 loss_per_im = loss_per_im + gate_loss*self.gate_loss_coeff            
                 mean_gate = gate_smp.mean()
             loss = loss_per_im.mean(0) #Mean rather than sum so that it doesn't depend on batch size                        
