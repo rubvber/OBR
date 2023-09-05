@@ -91,6 +91,7 @@ def main(args):
         'trans_pred': args.trans_pred,
         'trans_pred_res': args.trans_pred_res,
         'trans_pred_gate': args.trans_pred_gate,
+        'gate_loss_coeff': args.gate_loss_coeff,
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -307,6 +308,7 @@ if __name__ == "__main__":
     parser.add_argument('--trans_pred', default=False, type=str2bool)
     parser.add_argument('--trans_pred_res', default=False, type=str2bool)
     parser.add_argument('--trans_pred_gate', default='HeavySide', type=str)
+    parser.add_argument('--gate_loss_coeff', default=10.0, type=float)
     parser.add_argument('--ad_collisions', default=False, type=str2bool)
 
     
@@ -315,7 +317,7 @@ if __name__ == "__main__":
     if True:
         args.threeD = False
         args.debug_run = True
-        args.gpus = [7,]
+        args.gpus = [2,]
         # args.gpus = [5,]
         args.batch_size=4
         args.val_batch_size=4
@@ -330,6 +332,7 @@ if __name__ == "__main__":
         args.trans_pred_gate = 'Sigmoid'
         args.ad_collisions=True
         args.logdir='C2PO_collision_logs'
+        args.gate_loss_coeff=100.0
         # args.resume_from_checkpoint = '/home/rubber/C2PO/C2PO_collision_logs/lightning_logs/version_17/checkpoints/last.ckpt'
                 
     main(args)
