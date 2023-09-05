@@ -1,4 +1,8 @@
 #! /bin/sh
 
 python C2PO_trainer.py --gpus 1 2 3 4  --beta 5.0  --new_first_action_inf True --ad_collisions True --trans_pred True \
-    --logdir ./C2PO_collision_logs/  --random_seed 1238 --sigma_chi 0.1
+    --logdir ./C2PO_collision_logs/  --random_seed 1238 --sigma_chi 0.1 
+
+
+#v20 is with logsd0 fixed
+#v21 is with logsd0 fixed and multi-head (4) attention

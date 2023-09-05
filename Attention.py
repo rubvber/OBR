@@ -24,10 +24,8 @@ class ScaledDotProductAttention(nn.Module):
     def __init__(self, dim: int, d_k=64):
         super(ScaledDotProductAttention, self).__init__()
         self.sqrt_d_k = math.sqrt(d_k)
-        self.wq = nn.Linear(dim,d_k)
-        self.wk = nn.Linear(dim,d_k)
-        self.wv = nn.Linear(dim,d_k)
-
+        self.wq, self.wk, self.wv = [nn.Linear(dim,d_k) for _ in range(3)]
+  
     def forward(self, x):
 
         query = self.wq(x)
@@ -38,4 +36,29 @@ class ScaledDotProductAttention(nn.Module):
         
         attn = score.softmax(-1)
         context = torch.bmm(attn, value)
+        return context, attn
+    
+
+class MultiHeadAttention(nn.Module):
+    # Code added by Ruben van Bergen
+    def __init__(self, in_dim, d_k=64, num_heads=4):
+        super(MultiHeadAttention, self).__init__()
+        self.sqrt_d_k = math.sqrt(d_k)
+        self.num_heads = num_heads
+        self.d_k = d_k
+        self.wq, self.wk, self.wv = [nn.Linear(in_dim,d_k*num_heads) for _ in range(3)]
+
+    def forward(self, x):
+        N,K = x.shape[:2]
+        s = [N, K, self.d_k, self.num_heads]
+        query = self.wq(x).view(s)
+        key = self.wk(x).view(s)
+        value = self.wv(x).view(s)
+
+        score = (query.unsqueeze(2)*key.unsqueeze(1)).sum(3) / self.sqrt_d_k
+        
+        attn = score.softmax(-2)
+
+        context = ((attn.unsqueeze(-2) * value.unsqueeze(2)).sum(2)).view(N,K,self.d_k*self.num_heads)
+        
         return context, attn

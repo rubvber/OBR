@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from active_dsprites import active_dsprites
 from active_3dsprites import active_3dsprites_vecenv
 
-from Attention import ScaledDotProductAttention
+from Attention import ScaledDotProductAttention, MultiHeadAttention
 
 
 def ismember(d, k):
@@ -140,7 +140,8 @@ class TransPredNet(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.ELU()
         )  
-        self.att_layer = ScaledDotProductAttention(hidden_size, hidden_size)
+        # self.att_layer = ScaledDotProductAttention(hidden_size, hidden_size)
+        self.att_layer = MultiHeadAttention(hidden_size, hidden_size//4, 4)
         self.decoder = nn.Sequential(
             nn.ELU(),
             nn.Linear(hidden_size, hidden_size),
@@ -429,7 +430,7 @@ class C2PO(pl.LightningModule):
 
             if trans_pred:
                 self.trans_pred_net = TransPredNet(n_latent=self.n_latent)
-                self.logsd_pred0 = nn.Parameter(torch.zeros(1,1,1,self.n_latent*2))
+                self.logsd_pred0 = nn.Parameter(torch.zeros(1,1,1,self.n_latent*2))                
                 
         self.gumbel_tau={
                 'curr_tau': 1.0,
@@ -1680,7 +1681,8 @@ class C2PO(pl.LightningModule):
         if not self.freeze_percept_net:
             pars.extend([*self.refine_net.parameters(), *self.decoder.parameters(), self.D, *self.action_net.parameters(), self.lambda0])            
             if self.trans_pred:
-                pars.extend([*self.trans_pred_net.parameters(), self.logsd_pred0])
+                # pars.extend([*self.trans_pred_net.parameters(), self.logsd_pred0])
+                pars.extend([*self.trans_pred_net.parameters()])
         
         if self.with_goal_net:
             pars.extend([*self.goal_net.parameters()])
