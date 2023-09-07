@@ -10,3 +10,4 @@ lightning_logs
 goal_data
 goal*data*.pkl
 *.gif
+foo.ipynb

@@ -88,9 +88,9 @@ def main(args):
         'new_first_action_inf': args.new_first_action_inf,
         'reg_D_lambda': reg_D_lambda,
         'goal_trainer_mode': True if args.goal_train_data is not None else False,
-        'trans_pred': args.trans_pred,
+        'pred_type': args.pred_type,
         'trans_pred_res': args.trans_pred_res,
-        'trans_pred_gate': args.trans_pred_gate,
+        'pred_gate': args.pred_gate,
         'gate_loss_coeff': args.gate_loss_coeff,
     }
 
@@ -305,35 +305,35 @@ if __name__ == "__main__":
     parser.add_argument('--new_first_action_inf', default=False, type=str2bool)
     parser.add_argument('--reg_D_lambda', default=(0.0,0.0), type=float, nargs=2, help='Hyperparameters for regularization of D-matrix (L1, L2)')
     parser.add_argument('--goal_train_data', default=None, type=str, help='Path to data for training goal network')
-    parser.add_argument('--trans_pred', default=False, type=str2bool)
+    parser.add_argument('--pred_type', default='Linear', type=str)
     parser.add_argument('--trans_pred_res', default=False, type=str2bool)
-    parser.add_argument('--trans_pred_gate', default='HeavySide', type=str)
+    parser.add_argument('--pred_gate', default='HeavySide', type=str)
     parser.add_argument('--gate_loss_coeff', default=10.0, type=float)
     parser.add_argument('--ad_collisions', default=False, type=str2bool)
 
     
     args = parser.parse_args()
 
-    if False:
+    if True:
         args.threeD = False
         args.debug_run = True
         args.gpus = [3,]
         # args.gpus = [5,]
-        args.batch_size=4
-        args.val_batch_size=4
+        args.batch_size=16
+        args.val_batch_size=16
         args.beta = 5.0
         args.reduceLR_factor = 0.333333
         args.with_rotation = False
         args.network_config = 'simple'
         args.n_latent= 16        
         args.new_first_action_inf=True
-        args.trans_pred=True
+        args.pred_type = 'pair_pred'
         args.trans_pred_res = True
-        args.trans_pred_gate = 'ReTanh'
+        args.pred_gate = 'ReTanh'
         args.ad_collisions=True
         args.logdir='C2PO_collision_logs'
         args.gate_loss_coeff=10.0
-        # args.resume_from_checkpoint = '/home/rubber/C2PO/snellius_checkpoints/collisions/version_6/checkpoints/last.ckpt'
+        # args.resume_from_checkpoint = '/home/rubber/C2PO/snellius_checkpoints/collisions/version_10/checkpoints/last.ckpt'
                 
     main(args)
 
