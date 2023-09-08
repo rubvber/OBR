@@ -129,10 +129,11 @@ class GoalNet(nn.Module):
         return x
 
 class TransPredNet(nn.Module):
-    def __init__(self, n_latent = 16, hidden_size=64, res=False, gate='HeavySide'):
+    def __init__(self, n_latent = 16, hidden_size=64, res=False, gate='HeavySide', pred_gate_type='single'):
         super().__init__()
         
         self.hidden_size=hidden_size
+        self.pred_gate_type = pred_gate_type
         self.res = res
         if gate=='HeavySide':
             self.gate = lambda x: STEFunction.apply(x)
@@ -150,11 +151,17 @@ class TransPredNet(nn.Module):
         )  
         # self.att_layer = ScaledDotProductAttention(hidden_size, hidden_size)
         self.att_layer = MultiHeadAttention(hidden_size, hidden_size//4, 4)
+
+        if self.pred_gate_type=='single':
+            self.pred_gate_size = 1
+        elif self.pred_gate_type=='per_latent':
+            self.pred_gate_size = n_latent*2
+        
         self.decoder = nn.Sequential(
             nn.ELU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ELU(),
-            nn.Linear(hidden_size, n_latent*2+1)
+            nn.Linear(hidden_size, n_latent*2+self.pred_gate_size)
         )
 
 
@@ -174,16 +181,17 @@ class TransPredNet(nn.Module):
         z = self.decoder(z)
         # z = torch.cat((z[:,:-1], torch.sigmoid(z[:,(-1,)])), -1)
         
-        z = torch.cat((z[:,:-1]+z0, self.gate(z[:,(-1,)])), -1)
+        z = torch.cat((z[:,:-self.pred_gate_size]+z0, self.gate(z[:,-self.pred_gate_size:])), -1)
         
 
         return z.view(N,F,K,-1)
 
 class PairPredNet(nn.Module):
     # This will get as input the action-perturbed linear object predictions.
-    def __init__(self, n_latent=16, hidden_size=64, K=4, gate='ReTanh'):
+    def __init__(self, n_latent=16, hidden_size=64, K=4, gate='ReTanh', pred_gate_type='single'):
         super().__init__()
         self.hidden_size=hidden_size
+        self.pred_gate_type = pred_gate_type
         self.encoder = nn.Sequential(
             nn.Linear(n_latent*2, hidden_size),
             nn.ELU(),
@@ -195,7 +203,13 @@ class PairPredNet(nn.Module):
             nn.ELU(),
             nn.Linear(hidden_size, hidden_size*2),
         )
-        self.comb = nn.Linear(hidden_size*2+n_latent*2, n_latent*2+1)
+
+        if self.pred_gate_type=='single':
+            self.pred_gate_size = 1
+        elif self.pred_gate_type=='per_latent':
+            self.pred_gate_size = n_latent*2
+
+        self.comb = nn.Linear(hidden_size*2+n_latent*2, n_latent*2+self.pred_gate_size)
 
         self.pairs = []
         for k in range(K):
@@ -237,7 +251,7 @@ class PairPredNet(nn.Module):
         z_interact = z_interact.sum(-2)
         z = self.comb(torch.cat((z0,z1,z_interact),-1).view(N*F*K,-1))
 
-        z = torch.cat((z[:,:-1], self.gate(z[:,(-1,)])), -1)
+        z = torch.cat((z[:,:-self.pred_gate_size], self.gate(z[:,-self.pred_gate_size:])), -1)
 
         return z.view(N,F,K,-1)
         

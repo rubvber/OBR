@@ -92,6 +92,7 @@ def main(args):
         'trans_pred_res': args.trans_pred_res,
         'pred_gate': args.pred_gate,
         'gate_loss_coeff': args.gate_loss_coeff,
+        'pred_gate_type': args.pred_gate_type,
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -190,6 +191,8 @@ def main(args):
                 rule_goal = args.ad_rule_goal,
                 rule_goal_actions= args.ad_rule_goal_actions,        
                 with_collisions = args.ad_collisions,
+                v_sd = args.ad_v_sd,
+                a_sd = args.ad_a_sd,
                 )
             active_dsprites_val = active_dsprites(
                 include_masks=True,         
@@ -204,6 +207,8 @@ def main(args):
                 rule_goal = args.ad_rule_goal,
                 rule_goal_actions= args.ad_rule_goal_actions,        
                 with_collisions = args.ad_collisions,
+                v_sd = args.ad_v_sd,
+                a_sd = args.ad_a_sd,
                 ) 
         
                     
@@ -310,11 +315,14 @@ if __name__ == "__main__":
     parser.add_argument('--pred_gate', default='HeavySide', type=str)
     parser.add_argument('--gate_loss_coeff', default=10.0, type=float)
     parser.add_argument('--ad_collisions', default=False, type=str2bool)
+    parser.add_argument('--ad_v_sd', default=4/64, type=float)
+    parser.add_argument('--ad_a_sd', default=4/64, type=float)
+    parser.add_argument('--pred_gate_type', default='single', type=str)
 
     
     args = parser.parse_args()
 
-    if True:
+    if False:
         args.threeD = False
         args.debug_run = True
         args.gpus = [3,]
