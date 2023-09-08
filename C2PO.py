@@ -414,6 +414,7 @@ class C2PO(pl.LightningModule):
             trans_pred_res = False,
             pred_gate = 'HeavySide',
             gate_loss_coeff = 10.0,            
+            pred_gate_type = 'single',
         ):            
 
             
@@ -462,6 +463,7 @@ class C2PO(pl.LightningModule):
         self.trans_pred_res = trans_pred_res
         self.gate_loss_coeff = gate_loss_coeff        
         self.pred_gate = pred_gate
+        self.pred_gate_type = pred_gate_type
         
         self.save_hyperparameters()
         
@@ -527,10 +529,10 @@ class C2PO(pl.LightningModule):
             self.action_net = ActionNet(vec_input_size=5*self.action_dim, out_size=2*self.action_dim)         
 
             if self.pred_type=='trans_pred':
-                self.trans_pred_net = TransPredNet(n_latent=self.n_latent, res = self.trans_pred_res, gate=self.pred_gate)
+                self.trans_pred_net = TransPredNet(n_latent=self.n_latent, res = self.trans_pred_res, gate=self.pred_gate, pred_gate_type=self.pred_gate_type)
                 self.logsd_pred0 = nn.Parameter(torch.zeros(1,1,1,self.n_latent*2))                
             elif self.pred_type=='pair_pred':
-                self.pair_pred_net = PairPredNet(n_latent=self.n_latent)
+                self.pair_pred_net = PairPredNet(n_latent=self.n_latent, gate=self.pred_gate, pred_gate_type=self.pred_gate_type)
                 self.logsd_pred0 = nn.Parameter(torch.zeros(1,1,1,self.n_latent*2))                
                 
         self.gumbel_tau={
@@ -674,13 +676,20 @@ class C2PO(pl.LightningModule):
                         prev_prime_smp,                    
                         latent_space_action,                    
                     ),-1)
-                    pred = self.trans_pred_net(pred_inputs) #These are sampled state predictions + gating probabilities     
+                    pred = self.trans_pred_net(pred_inputs) #These are samled state predictions + gating probabilities     
+                    gate_size = self.trans_pred_net.pred_gate_size
                 elif self.pred_type=='pair_pred':
                     pred = self.pair_pred_net(torch.cat((state_pred,prime_pred),-1))
-                    
-                pred_state, pred_prime, pred_gate = torch.split(pred, [self.n_latent, self.n_latent, 1],-1)                
-                state_pred = (1-pred_gate)*state_pred + pred_gate*pred_state
-                prime_pred = (1-pred_gate)*prime_pred + pred_gate*pred_prime    
+                    gate_size = self.pair_pred_net.pred_gate_size
+
+
+                pred_state, pred_prime, pred_gate = torch.split(pred, [self.n_latent, self.n_latent, gate_size],-1)      
+                if gate_size==self.n_latent*2:                    
+                    pred_gate_state, pred_gate_prime = torch.chunk(pred_gate, 2, dim=-1)
+                else:
+                    pred_gate_state = pred_gate_prime = pred_gate
+                state_pred = (1-pred_gate_state)*state_pred + pred_gate_state*pred_state
+                prime_pred = (1-pred_gate_prime)*prime_pred + pred_gate_prime*pred_prime    
 
                 return torch.cat((state_pred, prime_pred), -1), pred_gate
         

@@ -341,6 +341,7 @@ if __name__ == "__main__":
         args.ad_collisions=True
         args.logdir='C2PO_collision_logs'
         args.gate_loss_coeff=10.0
+        args.pred_gate_type='per_latent'
         # args.resume_from_checkpoint = '/home/rubber/C2PO/snellius_checkpoints/collisions/version_10/checkpoints/last.ckpt'
                 
     main(args)
