@@ -1456,7 +1456,7 @@ class C2PO(pl.LightningModule):
             'pref_lambda': all_pref_lambdas if self.with_goal_net and self.interactive else None,
             'action_fields': action_fields if self.interactive and self.return_images else None,
             'pred_rec_slots': pred_rec_slots if self.pred_rec_loss_coeff else None,
-            'pred_mask': pred_mask if self.pred_rec_loss_coeff else None,             
+            'pred_mask': stable_softmax(pred_mask,2) if self.pred_rec_loss_coeff else None,             
         }
 
         return out_dict
