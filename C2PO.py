@@ -415,6 +415,7 @@ class C2PO(pl.LightningModule):
             pred_gate = 'HeavySide',
             gate_loss_coeff = 10.0,            
             pred_gate_type = 'single',
+            pred_rec_loss_coeff = 0.0,
         ):            
 
             
@@ -464,6 +465,7 @@ class C2PO(pl.LightningModule):
         self.gate_loss_coeff = gate_loss_coeff        
         self.pred_gate = pred_gate
         self.pred_gate_type = pred_gate_type
+        self.pred_rec_loss_coeff = pred_rec_loss_coeff
         
         self.save_hyperparameters()
         
@@ -1407,6 +1409,9 @@ class C2PO(pl.LightningModule):
                     
 
                 pred_rec,pred_mask,_ = self.decode(pred_lambda, do_sample=False)
+                if self.pred_rec_loss_coeff>0:
+                    pred_rec_slots = pred_rec.clone()                
+
                 pred_rec,_ = self.comb_rec(pred_rec, pred_mask)
                 all_recs = torch.cat((all_recs, pred_rec), 1)
                 if self.interactive:
@@ -1422,7 +1427,7 @@ class C2PO(pl.LightningModule):
 
         if not is_train:
             total_loss, frame_final_losses, loss_steps = map(lambda x: x.detach(), (total_loss, frame_final_losses, loss_steps))
-        else:
+        else: 
             if not total_loss.isfinite(): total_loss = None
 
         if self.interactive:
@@ -1450,6 +1455,8 @@ class C2PO(pl.LightningModule):
             'prior_pref': prior_pref,            
             'pref_lambda': all_pref_lambdas if self.with_goal_net and self.interactive else None,
             'action_fields': action_fields if self.interactive and self.return_images else None,
+            'pred_rec_slots': pred_rec_slots if self.pred_rec_loss_coeff else None,
+            'pred_mask': pred_mask if self.pred_rec_loss_coeff else None,             
         }
 
         return out_dict
@@ -1477,20 +1484,43 @@ class C2PO(pl.LightningModule):
         if not self.interactive:
             if isinstance(batch, list):
                 ims, _, action_fields, *_ = batch[:]
+
+            if self.pred_rec_loss_coeff>0:
+                end_idx = -self.val_predict
+            else:
+                end_idx = ims.shape[1]                
+            F_infer = ims.shape[1]-self.val_predict                
          
             out_dict = self.forward(
-                ims,
-                action_fields=action_fields,                
+                ims[:, :end_idx],
+                action_fields=action_fields[:,:end_idx],                
                 is_train=True,
                 num_inf_steps=self.train_iter_per_timestep,
-                win_size=self.train_win_size)              
+                win_size=self.train_win_size,
+                num_predict = self.val_predict if self.pred_rec_loss_coeff else 0,
+                )              
         else:
             out_dict = self.forward(
                 batch, 
                 is_train=True,
                 num_inf_steps=self.train_iter_per_timestep,
                 win_size=self.train_win_size,
-                maxF=self.maxF)       
+                maxF=self.maxF,
+                num_predict = self.val_predict if self.pred_rec_loss_coeff else 0,
+                )       
+            
+        if self.pred_rec_loss_coeff>0:
+            rec_err_sq = (ims[:,F_infer:].unsqueeze(2)-out_dict['pred_rec_slots'])**2
+            pix_ll = (-0.5*(np.log(2*np.pi*self.im_var) + self.im_prec*rec_err_sq)).sum(3) #sum over RGB channels (same as product in probability domain)
+
+            pix_like_weighted = out_dict['pred_mask'].squeeze(3)*pix_ll.exp() #squeeze mask in the channel dimension as it's only a single channel (but don't squeeze in the frame dimension!)
+            pix_like = pix_like_weighted.sum(2) + 1e-40 #Sum over slots to get the overal pixel likelihood, add a tiny offset for numerical stability
+
+            del pix_like_weighted
+
+            pred_rec_loss = -pix_like.log().sum((2,3)).mean() 
+            out_dict['total_loss'] = out_dict['total_loss'] + self.pred_rec_loss_coeff*pred_rec_loss
+            self.log('train_pred_rec_loss', pred_rec_loss, sync_dist=True)
 
         if self.with_goal_net:
             N,F,K,_ = out_dict['final_lambda'].shape
@@ -1595,7 +1625,18 @@ class C2PO(pl.LightningModule):
             true_masks = out_dict['true_masks']            
             end_idx = self.maxF
             
+        if self.pred_rec_loss_coeff>0:
+            rec_err_sq = (ims[:,F_infer:].unsqueeze(2)-out_dict['pred_rec_slots'])**2
+            pix_ll = (-0.5*(np.log(2*np.pi*self.im_var) + self.im_prec*rec_err_sq)).sum(3) #sum over RGB channels (same as product in probability domain)
 
+            pix_like_weighted = out_dict['pred_mask'].squeeze(3)*pix_ll.exp() #squeeze mask in the channel dimension as it's only a single channel (but don't squeeze in the frame dimension!)
+            pix_like = pix_like_weighted.sum(2) + 1e-40 #Sum over slots to get the overal pixel likelihood, add a tiny offset for numerical stability
+
+            del pix_like_weighted
+
+            pred_rec_loss = -pix_like.log().sum((2,3)).mean() 
+            out_dict['total_loss'] = out_dict['total_loss'] + self.pred_rec_loss_coeff*pred_rec_loss
+            self.log('val_pred_rec_loss', pred_rec_loss, sync_dist=True)
         
         torch.set_grad_enabled(False) #Not sure if this is necessary        
         N,_,_,H,W = ims.shape
@@ -1643,6 +1684,8 @@ class C2PO(pl.LightningModule):
             'F-ARI': FARI_scores.mean(),
             'latent_sd_avg': (2*logsd.exp()).sqrt().mean(),
         }, sync_dist=True) 
+
+        
 
         if self.pred_type in ['trans_pred', 'pair_pred']:
             self.log_dict({

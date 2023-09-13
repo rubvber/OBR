@@ -93,6 +93,7 @@ def main(args):
         'pred_gate': args.pred_gate,
         'gate_loss_coeff': args.gate_loss_coeff,
         'pred_gate_type': args.pred_gate_type,
+        'pred_rec_loss_coeff': args.pred_rec_loss_coeff,
     }
 
     assert not ((not args.threeD) and args.with_rotation), 'Rotations currently not implemented for 2-D environment'
@@ -318,6 +319,7 @@ if __name__ == "__main__":
     parser.add_argument('--ad_v_sd', default=4/64, type=float)
     parser.add_argument('--ad_a_sd', default=4/64, type=float)
     parser.add_argument('--pred_gate_type', default='single', type=str)
+    parser.add_argument('--pred_rec_loss_coeff', default=False, type=str2bool)
 
     
     args = parser.parse_args()
@@ -342,6 +344,9 @@ if __name__ == "__main__":
         args.logdir='C2PO_collision_logs'
         args.gate_loss_coeff=10.0
         args.pred_gate_type='per_latent'
+        args.pred_rec_loss_coeff = 10.0
+        args.ad_num_frames=8
+        args.val_predict=4
         # args.resume_from_checkpoint = '/home/rubber/C2PO/snellius_checkpoints/collisions/version_10/checkpoints/last.ckpt'
                 
     main(args)
