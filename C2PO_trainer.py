@@ -319,7 +319,7 @@ if __name__ == "__main__":
     parser.add_argument('--ad_v_sd', default=4/64, type=float)
     parser.add_argument('--ad_a_sd', default=4/64, type=float)
     parser.add_argument('--pred_gate_type', default='single', type=str)
-    parser.add_argument('--pred_rec_loss_coeff', default=False, type=str2bool)
+    parser.add_argument('--pred_rec_loss_coeff', default=0.0, type=float)
 
     
     args = parser.parse_args()
