@@ -7,7 +7,7 @@ from C2PO import C2PO
 from active_3dsprites import active_3dsprites_dataset, active_3dsprites_vecenv, active_3dsprites_env
 from math import floor, ceil
 import numpy as np
-from tqdm import tqdm
+from tqdm import tqdm, tqdm_notebook
 
 def run_demo(K=3, threeD=True, batch_size=4, rand_seed=4343):
     data = demo_run_inf(K,threeD, batch_size, rand_seed)
@@ -44,6 +44,7 @@ def demo_run_inf(K=3, threeD=True, batch_size=4, rand_seed=4343):
             'rand_seed0': 50000+10000+1234+rand_seed,
             'bgcolor': 127,            
             'v_sd': 1/64*10,
+            'num_objs': K,
         })
     
     pl.seed_everything(rand_seed)
@@ -54,6 +55,18 @@ def demo_run_inf(K=3, threeD=True, batch_size=4, rand_seed=4343):
     test_data = trainer.predict(model, dataloaders=test_loader)
 
     return test_data
+
+def is_notebook() -> bool:
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True   # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False      # Probably standard Python interpreter
 
 def save_grid_image(x, name):  
     Image.fromarray((make_grid(x, nrow=4)*255).permute(1,2,0).to(torch.uint8).cpu().numpy()).save(name)
@@ -68,6 +81,11 @@ def save_grid_gif(x, name):
 def demo_plot(data, threeD=True):
     N,F,_,Z = data[0]['true_states'].shape
     render_size=128
+
+    if is_notebook():
+        tqdm_fun = tqdm_notebook
+    else:
+        tqdm_fun = tqdm
     
     frames = torch.zeros(N,len(data),(F-1)*10+1,3,render_size, render_size)
     # frames = []
@@ -76,7 +94,7 @@ def demo_plot(data, threeD=True):
         if threeD:
             rule_goal='IfHalfTorus'
             ad = active_3dsprites_vecenv(init_data=(d['true_states'][:,0], d['true_bgc']), ctx = {'rule_goal': rule_goal, 'im_size': render_size})
-        for i,t in enumerate(tqdm(np.arange(0,11.00001,0.1), desc='Rendering frames')):
+        for i,t in enumerate(tqdm_fun(np.arange(0,11.00001,0.1), desc='Rendering frames')):
             
             t0 = floor(t)
             t1 = ceil(t)
