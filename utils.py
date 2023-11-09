@@ -45,6 +45,8 @@ def demo_run_inf(K=3, threeD=True, batch_size=4, rand_seed=4343):
             'bgcolor': 127,            
             'v_sd': 1/64*10,
         })
+    
+    pl.seed_everything(rand_seed)
 
     model.K = K+1
     test_loader = DataLoader(active_dsprites_test, batch_size=batch_size, num_workers=2, persistent_workers=False, drop_last=True)
