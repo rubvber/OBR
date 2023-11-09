@@ -111,7 +111,7 @@ def demo_plot(data, threeD=True, K=3):
             goal = ad.get_goal_states()
             ad.destroy_render_envs()
             del ad
-            ad_goal = active_3dsprites_vecenv(init_data=(goal, d['true_bgc']), ctx={'im_size': render_size})
+            ad_goal = active_3dsprites_vecenv(init_data=(goal, d['true_bgc']), ctx={'im_size': render_size, 'num_objs': K})
             ims, _ = ad_goal.render()
             goal_ims[:,j] = ims
 
