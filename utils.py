@@ -9,11 +9,11 @@ from math import floor, ceil
 import numpy as np
 from tqdm import tqdm
 
-def run_demo(K=3, threeD=True, batch_size=4):
-    data = demo_run_inf(K,threeD, batch_size)
+def run_demo(K=3, threeD=True, batch_size=4, rand_seed=4343):
+    data = demo_run_inf(K,threeD, batch_size, rand_seed)
     demo_plot(data, threeD)
 
-def demo_run_inf(K=3, threeD=True, batch_size=4):
+def demo_run_inf(K=3, threeD=True, batch_size=4, rand_seed=4343):
     if threeD:
         ckpt_path = 'threeD.ckpt'
         if not os.path.exists(ckpt_path):
@@ -41,7 +41,7 @@ def demo_run_inf(K=3, threeD=True, batch_size=4):
             'with_rotation': False,
             'scale_min': 1.5,
             'scale_max': 1.50001,
-            'rand_seed0': 50000+10000+1234+4343,
+            'rand_seed0': 50000+10000+1234+rand_seed,
             'bgcolor': 127,            
             'v_sd': 1/64*10,
         })
