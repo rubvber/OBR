@@ -296,7 +296,12 @@ class active_3dsprites_env():
         # obj_paths = ['/home/rubber/AttentionExperiments/assets/box.egg', '/home/rubber/AttentionExperiments/assets/Cone.egg', '/home/rubber/AttentionExperiments/assets/HalfTorus.egg']
         # obj_paths = ['../assets/box.egg', '../assets/Cone.egg', '../assets/HalfTorus.egg']
         obj_paths = ['box.egg', 'Cone.egg', 'HalfTorus.egg']
-        prepath = os.path.expanduser('~') + '/AttentionExperiments/assets/'
+        if os.path.exists('box.egg'):
+            prepath =  ''
+        else:
+            prepath = 'C2PO'
+        
+        # prepath = os.path.expanduser('~') + '/AttentionExperiments/assets/'
 
         if 'box' in obj_paths[0]:
             scale_corrections = [1.4, 1.07, 6.0]
