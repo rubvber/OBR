@@ -99,7 +99,7 @@ class active_3dsprites_dataset(Dataset):
             if t+1 <= (episode_length-1):
                 obj_actions = torch.zeros((self.ctx['num_objs']+1,3+3*self.ctx['with_rotation']))
                 action_field=torch.zeros(action_fields.shape[1:])
-                if self.ctx['rule_goal']!='None' and t+1 >= episode_length-self.ctx['goal_frames']:
+                if self.ctx['rule_goal'] and t+1 >= episode_length-self.ctx['goal_frames']:
                     if t+1 < episode_length-1:
                         frames_to_go = episode_length-(t+1)   #E.g. if the next frame is frame 9 in a 12-frame sequence, then given 0-indexing that is actually the 10th frame, and so there are 2 frames left to go                        
                         goal_pos    = self.goal[:,8:11]
@@ -179,7 +179,11 @@ class active_3dsprites_vecenv():
     def step(self, actions, move_render_objs=False):
         for i,env in enumerate(self.envs): 
             env.step(actions[i], move_render_objs=move_render_objs)
-        
+
+    def set_obj_poses(self, new_obj_data):
+        for i,env in enumerate(self.envs): 
+            env.set_obj_poses(new_obj_data[i])
+
 
     def render(self, keep_render_env=False):
         ims = []
@@ -365,6 +369,14 @@ class active_3dsprites_env():
                     if self.ctx['with_rotation']:
                         obj.set_hpr(*new_obj_data[i,5:8])
         
+    def set_obj_poses(self, new_obj_data):
+        self.obj_data = new_obj_data
+        self.curr_masks = None #As a precaution, clear the current masks if there were any, since they will no longer be accurate (this prevents that we would call step() again before re-rendering the environment, and thus simulate an action based on outdated masks)                  
+        for [i,obj] in enumerate(self.objs):
+            obj.set_pos(*new_obj_data[i,[8,10,9]])
+            if self.ctx['with_rotation']:
+                obj.set_hpr(*new_obj_data[i,5:8])
+
     #@profile
     def init_render_env(self):
         # Retrieve the worker info
@@ -611,51 +623,31 @@ class active_3dsprites_env():
 
 if __name__=="__main__":
     
-    # import imageio
 
-    # dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [3,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127})
+    # dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [3,], 'episode_length': 12, 'with_rotation': True, 'bgcolor': 127})
     
-    # # dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [0,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127, 
-    # #                                     'action_frames': [2,4,6,8], 'rule_goal': 'IfHalfTorus', 'scale_min': 1.5, 'scale_max': 1.50001, 'goal_frames': 3})
+    dataset = active_3dsprites_dataset({'im_size': 64, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [0,], 'episode_length': 12, 'with_rotation': False, 'bgcolor': 127, 
+                                        'action_frames': [2,4,6,8], 'rule_goal': 'IfHalfTorus', 'scale_min': 1.5, 'scale_max': 1.50001, 'goal_frames': 3})
                
-    # # dataset = active_3dsprites_dataset({
-    # #         'N': 512,
-    # #         'interactive': True,            
-    # #         'action_frames': [],            
-    # #         'gpus': 9,
-    # #         'with_rotation': False,
-    # #         'scale_min': 1.5,
-    # #         'scale_max': 1.50001,
-    # #         'rand_seed0': 50000+10000+1234+4343,
-    # #         'bgcolor': 127,                      
-    # #     })
+    # dataset = active_3dsprites_dataset({
+    #         'N': 512,
+    #         'interactive': True,            
+    #         'action_frames': [],            
+    #         'gpus': 9,
+    #         'with_rotation': False,
+    #         'scale_min': 1.5,
+    #         'scale_max': 1.50001,
+    #         'rand_seed0': 50000+10000+1234+4343,
+    #         'bgcolor': 127,                      
+    #     })
 
-    # dataloader = DataLoader(dataset, 16, num_workers=0)
-    # # dataloader = DataLoader(dataset, 16, num_workers=4)
-    # dataiter = iter(dataloader)
-    
-    # # for i in range(2):
-        
-    # foo = dataiter.next()           
-
-    # for i in range(dataloader.batch_size):
-    #     im_list=torch.split(foo[0][i].squeeze(), 1, dim=0)
-    #     im_list=[Image.fromarray((x.squeeze().permute((1,2,0))*255).to(torch.uint8).numpy()) for x in im_list]
-    #     imageio.mimsave('3d_movie{}.gif'.format(i), im_list, 'GIF-PIL', fps=3, loop=0)          
-
-    
-    dataset = active_3dsprites_dataset({'im_size': 256, 'render_size': 64*4, 'num_objs': 3, 'rand_seed0': 4001, 'gpus': [3,], 'episode_length': 6, 'with_rotation': False, 'bgcolor': 127})
-    
-    dataloader = DataLoader(dataset, 32, num_workers=4)
+    dataloader = DataLoader(dataset, 16, num_workers=0)
     # dataloader = DataLoader(dataset, 16, num_workers=4)
     dataiter = iter(dataloader)
     
-    # for i in range(2):
+    for i in range(2):
         
-    ims = dataiter.next()           
-    
-    from torchvision.utils import make_grid
-              
-    Image.fromarray((make_grid(ims[0].view(dataloader.batch_size*6,3,256,256), nrow=6).permute((1,2,0))*255).to(torch.uint8).numpy()).save('ad3_examples_4Pablo.png')
-        
+        foo = dataiter.next()           
+                
+        Image.fromarray((make_grid(foo[0].view(dataloader.batch_size*dataset.ctx['episode_length'],3,64,64), nrow=dataset.ctx['episode_length']).permute(1,2,0)*255).to(torch.uint8).numpy()).save('foo_rule-goal-IfHalfTorus_{}.png'.format(i))
               
