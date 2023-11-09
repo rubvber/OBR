@@ -22,7 +22,7 @@ def demo_run_inf(K=3, threeD=True):
             raise Exception('Checkpoint path not found')
 
 
-    model = C2PO().load_from_checkpoint(ckpt_path)
+    model = C2PO().load_from_checkpoint(ckpt_path, init_percept_net_path = None)
     model.maxF=12
     model.val_predict=0
     model.interactive=True
