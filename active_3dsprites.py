@@ -299,7 +299,9 @@ class active_3dsprites_env():
         if os.path.exists('box.egg'):
             prepath =  ''
         else:
-            prepath = 'C2PO'
+            prepath = 'C2PO/'
+            if not os.path.exists(prepath+'box.egg'):
+                raise Exception("egg file not found")
         
         # prepath = os.path.expanduser('~') + '/AttentionExperiments/assets/'
 
