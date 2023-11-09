@@ -11,7 +11,7 @@ from tqdm import tqdm, tqdm_notebook
 
 def run_demo(K=3, threeD=True, batch_size=4, rand_seed=4343):
     data = demo_run_inf(K,threeD, batch_size, rand_seed)
-    demo_plot(data, threeD)
+    demo_plot(data, threeD, K=K)
 
 def demo_run_inf(K=3, threeD=True, batch_size=4, rand_seed=4343):
     if threeD:
@@ -78,7 +78,7 @@ def save_grid_gif(x, name):
     ims[0].save(name, 'gif', save_all=True, append_images=ims[1:], loop=0, duration=[33,]*(len(x)-1)+[4000,])
     return
 
-def demo_plot(data, threeD=True):
+def demo_plot(data, threeD=True, K=3):
     N,F,_,Z = data[0]['true_states'].shape
     render_size=128
 
@@ -93,7 +93,7 @@ def demo_plot(data, threeD=True):
     for j,d in enumerate(tqdm(data, desc='Processing results batches')):
         if threeD:
             rule_goal='IfHalfTorus'
-            ad = active_3dsprites_vecenv(init_data=(d['true_states'][:,0], d['true_bgc']), ctx = {'rule_goal': rule_goal, 'im_size': render_size})
+            ad = active_3dsprites_vecenv(init_data=(d['true_states'][:,0], d['true_bgc']), ctx = {'rule_goal': rule_goal, 'im_size': render_size, 'num_objs': K})
         for i,t in enumerate(tqdm_fun(np.arange(0,11.00001,0.1), desc='Rendering frames')):
             
             t0 = floor(t)
@@ -128,4 +128,4 @@ def demo_plot(data, threeD=True):
 
 
 if __name__ == "__main__":
-    run_demo()
+    run_demo(K=4)
