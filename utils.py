@@ -9,11 +9,11 @@ from math import floor, ceil
 import numpy as np
 from tqdm import tqdm
 
-def run_demo(K=3, threeD=True):
-    data = demo_run_inf(K,threeD)
+def run_demo(K=3, threeD=True, batch_size=4):
+    data = demo_run_inf(K,threeD, batch_size)
     demo_plot(data, threeD)
 
-def demo_run_inf(K=3, threeD=True):
+def demo_run_inf(K=3, threeD=True, batch_size=4):
     if threeD:
         ckpt_path = 'threeD.ckpt'
         if not os.path.exists(ckpt_path):
@@ -47,7 +47,7 @@ def demo_run_inf(K=3, threeD=True):
         })
 
     model.K = K+1
-    test_loader = DataLoader(active_dsprites_test, batch_size=8, num_workers=4, persistent_workers=False, drop_last=True)
+    test_loader = DataLoader(active_dsprites_test, batch_size=batch_size, num_workers=2, persistent_workers=False, drop_last=True)
     trainer = pl.Trainer(devices=(0,), accelerator="gpu", precision=16)
     test_data = trainer.predict(model, dataloaders=test_loader)
 
