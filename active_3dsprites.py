@@ -385,6 +385,7 @@ class active_3dsprites_env():
         worker_rank = worker_info.id if worker_info is not None else 0
         gpus = self.ctx['gpus']
         use_gpu = gpus[worker_rank % len(gpus)]
+        loadPrcFileData('', 'load-display p3headlessgl')
         loadPrcFileData('', 'egl-device-index {}'.format(use_gpu))
         
         loadPrcFileData('', 'notify-output zz_showbase_log.txt') #This just makes it so we don't get a bunch of output in the terminal
