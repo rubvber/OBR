@@ -1,4 +1,4 @@
-import torch
+import torch, os
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
@@ -16,6 +16,11 @@ def run_demo(K=3, threeD=True):
 def demo_run_inf(K=3, threeD=True):
     if threeD:
         ckpt_path = 'threeD.ckpt'
+        if not os.path.exists(ckpt_path):
+            ckpt_path = 'C2PO/threeD.ckpt'
+        if not os.path.exists(ckpt_path):
+            raise Exception('Checkpoint path not found')
+
 
     model = C2PO().load_from_checkpoint(ckpt_path)
     model.maxF=12
