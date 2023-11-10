@@ -9,11 +9,16 @@ from math import floor, ceil
 import numpy as np
 from tqdm import tqdm, tqdm_notebook
 
-def run_demo(K=3, threeD=True, batch_size=4, rand_seed=4343):
-    data = demo_run_inf(K,threeD, batch_size, rand_seed)
-    demo_plot(data, threeD, K=K)
+def run_demo(ctx):
+    data = demo_run_inf(ctx)
+    demo_plot(data, ctx)
 
-def demo_run_inf(K=3, threeD=True, batch_size=4, rand_seed=4343):
+def demo_run_inf(ctx):
+    K = ctx['K']
+    threeD = ctx['threeD']
+    batch_size = ctx['batch_size']
+    rand_seed = ctx['rand_seed']
+
     if threeD:
         ckpt_path = 'threeD.ckpt'
         if not os.path.exists(ckpt_path):
@@ -34,7 +39,7 @@ def demo_run_inf(K=3, threeD=True, batch_size=4, rand_seed=4343):
     model.action_placement_method = 'hedge'
 
     active_dsprites_test = active_3dsprites_dataset({
-            'N': 16,
+            'N': ctx['N'],
             'interactive': True,            
             'action_frames': [],            
             'gpus': 0,
@@ -82,9 +87,11 @@ def save_grid_gif(x, name):
     ims[0].save(name, 'gif', save_all=True, append_images=ims[1:], loop=0, duration=[33,]*(len(x)-1)+[4000,])
     return
 
-def demo_plot(data, threeD=True, K=3):
+def demo_plot(data, ctx):
     N,F,_,Z = data[0]['true_states'].shape
-    render_size=128
+    render_size=ctx['render_size']
+    threeD = ctx['threeD']
+    K = ctx['K']
 
     if is_notebook():
         tqdm_fun = tqdm_notebook
