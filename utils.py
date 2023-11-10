@@ -58,18 +58,18 @@ def demo_run_inf(K=3, threeD=True, batch_size=4, rand_seed=4343):
 
 def is_notebook() -> bool:
     try:
-        shell = get_ipython().__class__.__name__
-        if shell == 'ZMQInteractiveShell':
-            return True   # Jupyter notebook or qtconsole
-        elif shell == 'TerminalInteractiveShell':
-            return False  # Terminal running IPython
-        else:
-            return False  # Other type (?)
-    except NameError:
+        import google.colab
+        return True
+    except:
         try:
-            import google.colab
-            return True
-        except:
+            shell = get_ipython().__class__.__name__
+            if shell == 'ZMQInteractiveShell':
+                return True   # Jupyter notebook or qtconsole
+            elif shell == 'TerminalInteractiveShell':
+                return False  # Terminal running IPython
+            else:
+                return False  # Other type (?)
+        except NameError:            
             return False      # Probably standard Python interpreter
 
 def save_grid_image(x, name):  
