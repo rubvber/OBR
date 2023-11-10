@@ -82,10 +82,6 @@ def save_grid_image(x, name):
     return
 
 
-def save_grid_gif(x, name):
-    ims = [Image.fromarray((make_grid(foo,nrow=4)*255).permute(1,2,0).to(torch.uint8).cpu().numpy()).quantize(dither=Image.NONE) for foo in x]
-    ims[0].save(name, 'gif', save_all=True, append_images=ims[1:], loop=0, duration=[33,]*(len(x)-1)+[4000,])
-    return
 
 def demo_plot(data, ctx):
     N,F,_,Z = data[0]['true_states'].shape
@@ -97,6 +93,12 @@ def demo_plot(data, ctx):
         tqdm_fun = tqdm_notebook
     else:
         tqdm_fun = tqdm
+
+    def save_grid_gif(x, name):
+        ims = [Image.fromarray((make_grid(foo,nrow=4)*255).permute(1,2,0).to(torch.uint8).cpu().numpy()).quantize(dither=Image.NONE) for foo in tqdm_fun(x, desc='Converting frames')]
+        ims[0].save(name, 'gif', save_all=True, append_images=ims[1:], loop=0, duration=[33,]*(len(x)-1)+[4000,])
+        return
+
     
     frames = torch.zeros(N,len(data),(F-1)*10+1,3,render_size, render_size)
     # frames = []
