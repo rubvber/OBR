@@ -66,7 +66,11 @@ def is_notebook() -> bool:
         else:
             return False  # Other type (?)
     except NameError:
-        return False      # Probably standard Python interpreter
+        try:
+            import google.colab
+            return True
+        except:
+            return False      # Probably standard Python interpreter
 
 def save_grid_image(x, name):  
     Image.fromarray((make_grid(x, nrow=4)*255).permute(1,2,0).to(torch.uint8).cpu().numpy()).save(name)
@@ -90,7 +94,7 @@ def demo_plot(data, threeD=True, K=3):
     frames = torch.zeros(N,len(data),(F-1)*10+1,3,render_size, render_size)
     # frames = []
     goal_ims = torch.zeros(N,len(data), 3, render_size, render_size)
-    for j,d in enumerate(tqdm(data, desc='Processing results batches')):
+    for j,d in enumerate(tqdm_fun(data, desc='Processing results batches')):
         if threeD:
             rule_goal='IfHalfTorus'
             ad = active_3dsprites_vecenv(init_data=(d['true_states'][:,0], d['true_bgc']), ctx = {'rule_goal': rule_goal, 'im_size': render_size, 'num_objs': K})
