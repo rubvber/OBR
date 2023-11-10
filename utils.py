@@ -5,6 +5,7 @@ from torchvision.utils import make_grid
 from PIL import Image
 from C2PO import C2PO
 from active_3dsprites import active_3dsprites_dataset, active_3dsprites_vecenv, active_3dsprites_env
+from active_dsprites import active_dsprites
 from math import floor, ceil
 import numpy as np
 from tqdm import tqdm, tqdm_notebook
@@ -38,19 +39,34 @@ def demo_run_inf(ctx):
     model.ignore_goal_vel = False
     model.action_placement_method = 'hedge'
 
-    active_dsprites_test = active_3dsprites_dataset({
-            'N': ctx['N'],
-            'interactive': True,            
-            'action_frames': [],            
-            'gpus': 0,
-            'with_rotation': False,
-            'scale_min': 1.5,
-            'scale_max': 1.50001,
-            'rand_seed0': 50000+10000+1234+rand_seed,
-            'bgcolor': 127,            
-            'v_sd': 1/64*10,
-            'num_objs': K,
-        })
+    if threeD:
+        active_dsprites_test = active_3dsprites_dataset({
+                'N': ctx['N'],
+                'interactive': True,            
+                'action_frames': [],            
+                'gpus': 0,
+                'with_rotation': False,
+                'scale_min': 1.5,
+                'scale_max': 1.50001,
+                'rand_seed0': 50000+10000+1234+rand_seed,
+                'bgcolor': 127,            
+                'v_sd': 1/64*10,
+                'num_objs': K,
+            })
+    else:
+        active_dsprites_test = active_dsprites(
+            N=ctx['N'],
+            interactive=True,
+            rand_seed0=50000+10000+1234+rand_seed,
+            action_frames=[],
+            pos_smp_stats=(0.2,0.8),
+            sample_from_pref=False,
+            use_legacy_action_timing=False,
+            include_masks=True,
+            v_sd=1/64,
+            rule_goal='HeartLeftRight',
+            num_sprites=K,
+        )
     
     pl.seed_everything(rand_seed)
 
@@ -107,6 +123,9 @@ def demo_plot(data, ctx):
         if threeD:
             rule_goal='IfHalfTorus'
             ad = active_3dsprites_vecenv(init_data=(d['true_states'][:,0], d['true_bgc']), ctx = {'rule_goal': rule_goal, 'im_size': render_size, 'num_objs': K})
+        else:
+            rule_goal='HeartLR+TMB'
+        
         for i,t in enumerate(tqdm_fun(np.arange(0,11.00001,0.1), desc='Rendering frames')):
             
             t0 = floor(t)
