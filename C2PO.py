@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import adjusted_rand_score
 from matplotlib import pyplot as plt
 
-from active_dsprites import active_dsprites
+# from active_dsprites import active_dsprites
 from active_3dsprites import active_3dsprites_vecenv
 
 from Attention import ScaledDotProductAttention, MultiHeadAttention

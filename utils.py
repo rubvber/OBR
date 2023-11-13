@@ -5,7 +5,7 @@ from torchvision.utils import make_grid
 from PIL import Image
 from C2PO import C2PO
 from active_3dsprites import active_3dsprites_dataset, active_3dsprites_vecenv, active_3dsprites_env
-from active_dsprites import active_dsprites
+# from active_dsprites import active_dsprites
 from math import floor, ceil
 import numpy as np
 from tqdm import tqdm, tqdm_notebook
