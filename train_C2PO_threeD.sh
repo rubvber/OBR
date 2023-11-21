@@ -143,10 +143,19 @@
 #     --reduceLR_factor 0.333333 --reduceLR_patience 20 --reduceLR_minlr 3e-6 --with_goal_net True \
 #     --val_predict 0 
 
-python C2PO_trainer.py --gpus 1 2 --threeD True --batch_size 32 --reduceLR_factor 0.333333 --D_init_sd 0.002 \
+# python C2PO_trainer.py --gpus 1 2 --threeD True --batch_size 32 --reduceLR_factor 0.333333 --D_init_sd 0.002 \
+#     --val_batch_size 64 --ad_bgcolor 127 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 \
+#     --new_first_action_inf True --learning_rate 1e-3  --with_rotation False --ad_bounding_actions True --max_epochs 400 \
+#     --freeze_percept_net True --init_percept_net_path /home/rubber/C2PO/snellius_checkpoints/version_82/checkpoints/last.ckpt \
+#     --goal_train_data /home/rubber/C2PO/goal_data/train_data_IfHalfTorus_vsd0_snellius-v82_12frames.pkl \
+#     --reduceLR_factor 0.333333 --reduceLR_patience 20 --reduceLR_minlr 3e-6 --with_goal_net True \
+#     --val_predict 0 
+
+python C2PO_trainer.py --gpus 8 9 --threeD True --batch_size 32 --reduceLR_factor 0.333333 --D_init_sd 0.002 \
     --val_batch_size 64 --ad_bgcolor 127 --beta 5.0  --ad_scale_min 1.5 --ad_scale_max 1.50001 \
     --new_first_action_inf True --learning_rate 1e-3  --with_rotation False --ad_bounding_actions True --max_epochs 400 \
     --freeze_percept_net True --init_percept_net_path /home/rubber/C2PO/snellius_checkpoints/version_82/checkpoints/last.ckpt \
-    --goal_train_data /home/rubber/C2PO/goal_data/train_data_IfHalfTorus_vsd0_snellius-v82_12frames.pkl \
+    --goal_train_data /home/rubber/C2PO/goal_data/train_data_IfCone_vsd0_snellius-v82_12frames.pkl \
     --reduceLR_factor 0.333333 --reduceLR_patience 20 --reduceLR_minlr 3e-6 --with_goal_net True \
     --val_predict 0 
+#v109: Training on IfCone
