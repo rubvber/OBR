@@ -11,19 +11,25 @@ import numpy as np
 from tqdm import tqdm, tqdm_notebook
 
 def run_demo(ctx):
+    if not 'rule_goal' in ctx.keys():
+        ctx['rule_goal'] = 'IfHalfTorus'
     data = demo_run_inf(ctx)
     demo_plot(data, ctx)
+    
 
 def demo_run_inf(ctx):
     K = ctx['K']
     threeD = ctx['threeD']
     batch_size = ctx['batch_size']
-    rand_seed = ctx['rand_seed']
+    rand_seed = ctx['rand_seed']    
 
-    if threeD:
-        ckpt_path = 'threeD.ckpt'
+    if threeD:        
+        if ctx['rule_goal'] == 'IfHalfTorus':
+            ckpt_path = 'threeD.ckpt'
+        elif ctx['rule_goal'] == 'IfCone':
+            ckpt_path = 'threeD_IfCone.ckpt'
         if not os.path.exists(ckpt_path):
-            ckpt_path = 'C2PO/threeD.ckpt'
+            ckpt_path = 'C2PO/' + ckpt_path
         if not os.path.exists(ckpt_path):
             raise Exception('Checkpoint path not found')
 
@@ -121,7 +127,7 @@ def demo_plot(data, ctx):
     goal_ims = torch.zeros(N,len(data), 3, render_size, render_size)
     for j,d in enumerate(tqdm_fun(data, desc='Processing results batches')):
         if threeD:
-            rule_goal='IfHalfTorus'
+            rule_goal=ctx['rule_goal']
             ad = active_3dsprites_vecenv(init_data=(d['true_states'][:,0], d['true_bgc']), ctx = {'rule_goal': rule_goal, 'im_size': render_size, 'num_objs': K})
         else:
             rule_goal='HeartLR+TMB'
