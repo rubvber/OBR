@@ -561,6 +561,19 @@ class active_3dsprites_env():
             for s_idx in range(1,4):
                 this_idx = self.obj_data[:,3]==s_idx
                 goal[this_idx,9] = goal_ypos[s_idx-1]
+        if self.ctx['rule_goal']=='IfCone':
+            cone_idx = self.obj_data[:,3]==2 #Order is 1: box, 2: cone, 3: halftorus
+            goal = self.obj_data.clone()
+            goal[:,10] = (self.ctx['depth_min']+self.ctx['depth_max'])/2
+            goal[:,11:] = 0 #Target velocity is always 0   
+            if cone_idx.any():
+                goal[:,9]=0.15*10-5
+            else:
+                goal[:,9]=0.85*10-5            
+            goal_xpos = [x*10-5 for x in [0.15, 0.5, 0.85]]
+            for s_idx in range(1,4):
+                this_idx = self.obj_data[:,3]==s_idx
+                goal[this_idx,8] = goal_xpos[s_idx-1]
         elif self.ctx['rule_goal']=='None':
             pass
         else:

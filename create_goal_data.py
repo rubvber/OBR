@@ -16,7 +16,8 @@ model.return_images = False
 model.init_tau=0.8
 model.val_predict=0
 
-gpus = (0,1,2,3,4,5,6,7)
+# gpus = (0,1,2,3,4,5,6,7)
+gpus = (0,1,4,5,6,7,8,9)
 
 for i in range(1):
     trainer = pl.Trainer(devices=gpus, accelerator="gpu", strategy='ddp', precision=16)
