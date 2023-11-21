@@ -1784,7 +1784,7 @@ class C2PO(pl.LightningModule):
 
             if not self.interactive:
                 
-                ims, _, action_fields = batch[:]
+                ims, _, action_fields, *_ = batch[:]
 
                 if self.val_predict==0:
                     end_idx = ims.shape[1]

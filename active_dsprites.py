@@ -113,6 +113,8 @@ class active_dsprites(Dataset):
         verbose = False,
         collision_threshold = 0.005,
         collision_debug_images = False,
+        return_sprite_data = False,
+        direct_actions = False,
         ):
 
         self.im_size=im_size
@@ -163,6 +165,11 @@ class active_dsprites(Dataset):
         self.verbose = verbose
         self.collision_threshold = collision_threshold
         self.collision_debug_images = collision_debug_images
+        self.return_sprite_data = return_sprite_data
+
+        self.direct_actions = direct_actions
+
+        if direct_actions: assert not include_bgd_action, 'Cannot have bgd actions when using direct obj actions'
         
         # assert not ((rule_goal is not None) and interactive), 'Cannot have rule_goal and interactive at the same time' 
 
@@ -234,16 +241,17 @@ class active_dsprites(Dataset):
         '''
         
         if actions is not None:            
-            
-            assert actions.ndim==4, 'Action fields have incorrect dimensions'            
 
-            if self.curr_masks==None:
-                '''
-                Normally we rely on there already being masks available from a previous render step.
-                '''
-                _, self.curr_masks, _ = self.render()
-                        
-            actions = torch.einsum('bijk,bljk->bil', self.curr_masks*1.0, actions)            
+            if not self.direct_actions: #Otherwise, the actions are already in object space
+                assert actions.ndim==4, 'Action fields have incorrect dimensions'            
+                if self.curr_masks==None:
+                    '''
+                    Normally we rely on there already being masks available from a previous render step.
+                    '''
+                    _, self.curr_masks, _ = self.render()                      
+            
+                actions = torch.einsum('bijk,bljk->bil', self.curr_masks*1.0, actions)            
+            
             # actions = torch.einsum('bijk,bjkl->bil', self.curr_masks*1.0, actions)
 
             new_sprite_data=self.sprite_data.clone()            
@@ -536,7 +544,7 @@ class active_dsprites(Dataset):
             for j in action_objects:
                 obj_actions[i,j] = torch.randn(2,device=self.device)*action_sd
 
-        if return_action_fields:
+        if return_action_fields and not self.direct_actions:
             action_fields = self.obj_actions_to_action_fields(obj_actions)
             return action_fields
         else:
@@ -597,17 +605,25 @@ class active_dsprites(Dataset):
                 prefs = torch.zeros((self.num_frames, ), device=self.device)
             else:
                 prefs = torch.empty(0, device=self.device)
+            if self.return_sprite_data:
+                all_sprite_data = torch.zeros((self.num_frames,)+self.sprite_data.shape[1:], device=self.device)
             
 
             for f in range(self.num_frames):
-                ims[f], mask, pref = self.render()
-                if self.include_masks: masks[f] = mask 
-                if self.include_prior_pref: prefs[f] = pref
+
+                if self.return_sprite_data:
+                    all_sprite_data[f] = self.sprite_data[0].clone()               
+                if not (self.direct_actions and self.return_sprite_data):
+                    ims[f], mask, pref = self.render()
+                if not self.return_sprite_data:
+                    if self.include_masks: masks[f] = mask 
+                    if self.include_prior_pref: prefs[f] = pref
                 
                 if f < (self.num_frames-1): #If this isn't the final frame, then we need to advance the environment by one step (and perhaps simulate an action)                                        
-                    action_field = torch.zeros((1, 2, *(self.im_size,)*2), device=self.device)  
-                    if self.rule_goal and not self.rule_goal_actions=='end':                        
-                        action_field = self.obj_actions_to_action_fields(obj_actions[:,:,f])
+                    action_field = torch.zeros((1, 2, *(self.im_size,)*2), device=self.device) if not self.direct_actions else None
+                    if self.rule_goal and not self.rule_goal_actions=='end':                                  
+                        if not self.direct_actions:
+                            action_field = self.obj_actions_to_action_fields(obj_actions[:,:,f])
                     else:                            
                         obj_actions = torch.zeros(1, self.num_sprites+self.include_bgd_action, 2)      
                         this_do_action=False                                     
@@ -619,7 +635,7 @@ class active_dsprites(Dataset):
                                 plan_end_actions=True
                         if this_do_action:
                             obj_actions = self.get_random_action(action_sd=self.a_sd, include_bgd_action=self.include_bgd_action, actions_per_frame=self.actions_per_frame, return_action_fields=False)                        
-                            action_field = self.obj_actions_to_action_fields(obj_actions)                    
+                            action_field = self.obj_actions_to_action_fields(obj_actions) if not self.direct_actions else None
                             '''
                             Previously, we defined the actions as happening at the end of frame 'f' which would then alter the velocities in the next frame, f+1.
                             Now, we instead define the action as happening at the *start* of a frame, and affecting the velocities in that frame. That is, we basically
@@ -633,7 +649,10 @@ class active_dsprites(Dataset):
                             Check whether next frame would see the positions of the objects (nearly) leave the frame. If so, take an action to 
                             prevent this. This action overwrites any otherwise scheduled actions.
                             '''                        
-                            pred_sprite_data = self.step(action_field, do_not_update=True)                        
+                            if self.direct_actions:
+                                pred_sprite_data = self.step(obj_actions, do_not_update=True)                        
+                            else:
+                                pred_sprite_data = self.step(action_field, do_not_update=True)                        
                             too_high = pred_sprite_data[:,:,6:8]>0.95
                             too_low  = pred_sprite_data[:,:,6:8]<0.05
                             oob = torch.logical_or(too_high, too_low)
@@ -645,7 +664,7 @@ class active_dsprites(Dataset):
                                 if self.include_bgd_action:
                                     req_actions=torch.cat((req_actions, torch.zeros(1,1,2, device=self.device)),1)
                                 obj_actions[req_actions!=0] = req_actions[req_actions!=0]
-                                action_field = self.obj_actions_to_action_fields(obj_actions)                    
+                                action_field = self.obj_actions_to_action_fields(obj_actions) if not self.direct_actions else None                   
                         
 
                         if plan_end_actions:
@@ -664,17 +683,22 @@ class active_dsprites(Dataset):
                                 obj_actions = -curr_v
                             else:
                                 raise Exception('This should not be possible')
-                            action_field = self.obj_actions_to_action_fields(obj_actions)
+                            action_field = self.obj_actions_to_action_fields(obj_actions) if not self.direct_actions else None
 
                     # else:
                         # action_field=None              
                         #In this case the entry in the action_fields tensor will stay all 0s          
-
-                    if self.include_action_fields: action_fields[f+1-self.use_legacy_action_timing*1] = action_field*self.im_size #Multiply by image-size so it's in units of pixels, for backwards compatibility
-                    self.step(action_field)                    
+                    if self.direct_actions:
+                        self.step(obj_actions)
+                    else:
+                        if self.include_action_fields: action_fields[f+1-self.use_legacy_action_timing*1] = action_field*self.im_size #Multiply by image-size so it's in units of pixels, for backwards compatibility                        
+                        self.step(action_field)                    
             
             torch.set_rng_state(rs) #Restore RNG state we entered with
-            return ims, masks, action_fields, prefs
+            if self.return_sprite_data:
+                return all_sprite_data
+            else:
+                return ims, masks, action_fields, prefs
 
         
     
@@ -838,6 +862,25 @@ class active_dsprites(Dataset):
 
 
 if __name__ =="__main__":
+
+    ad_dataset = active_dsprites(        
+        interactive=False,  
+        im_size=64,
+        v_sd=4/64,
+        num_frames=12,
+        action_frames=(2,),         
+        with_collisions=True,                
+        pos_smp_stats=(0.2,0.8),        
+        rand_seed0=1234+8,
+        return_sprite_data=True,
+    )
+         
+    train_loader = DataLoader(ad_dataset, batch_size=16, num_workers=0)
+    dataiter = iter(train_loader)    
+    dat = dataiter.next()
+    
+    print('foo')
+    
     
     # Non-interactive mode (dataset/dataloader behavior):
     # ad_dataset = active_dsprites(        
@@ -856,34 +899,34 @@ if __name__ =="__main__":
     #     collision_debug_images=True,
     # )
 
-    ad_dataset = active_dsprites(        
-        interactive=False,  
-        im_size=64,
-        v_sd=4/64,
-        num_frames=12,
-        action_frames=(2,),         
-        with_collisions=True,
-        collision_threshold=0.0001,
-        # bounding_actions=True,
-        pos_smp_stats=(0.2,0.8),
-        # rand_seed0=1234,
-        rand_seed0=1234+8,
-        verbose=True,
-        collision_debug_images=True,
-    )
+    # ad_dataset = active_dsprites(        
+    #     interactive=False,  
+    #     im_size=64,
+    #     v_sd=4/64,
+    #     num_frames=12,
+    #     action_frames=(2,),         
+    #     with_collisions=True,
+    #     collision_threshold=0.0001,
+    #     # bounding_actions=True,
+    #     pos_smp_stats=(0.2,0.8),
+    #     # rand_seed0=1234,
+    #     rand_seed0=1234+8,
+    #     verbose=True,
+    #     collision_debug_images=True,
+    # )
          
-    train_loader = DataLoader(ad_dataset, batch_size=16, num_workers=0)
-    dataiter = iter(train_loader)
-    t1 = time.perf_counter()
-    ims, masks, action_fields, _ = dataiter.next()
-    t2 = time.perf_counter()
-    print(t2-t1)
+    # train_loader = DataLoader(ad_dataset, batch_size=16, num_workers=0)
+    # dataiter = iter(train_loader)
+    # t1 = time.perf_counter()
+    # ims, masks, action_fields, _ = dataiter.next()
+    # t2 = time.perf_counter()
+    # print(t2-t1)
 
-    from PIL import Image
-    from torchvision.utils import make_grid
-    import imageio
+    # from PIL import Image
+    # from torchvision.utils import make_grid
+    # import imageio
     
-    Image.fromarray((make_grid(ims.view(train_loader.batch_size*ad_dataset.num_frames,3,ad_dataset.im_size,ad_dataset.im_size), nrow=ad_dataset.num_frames).permute((1,2,0))*255).to(torch.uint8).numpy()).save('foo_collisions_pymunk.png')
+    # Image.fromarray((make_grid(ims.view(train_loader.batch_size*ad_dataset.num_frames,3,ad_dataset.im_size,ad_dataset.im_size), nrow=ad_dataset.num_frames).permute((1,2,0))*255).to(torch.uint8).numpy()).save('foo_collisions_pymunk.png')
 
     # for i in range(train_loader.batch_size):
     #     im_list=torch.split(ims[i].squeeze(), 1, dim=0)
