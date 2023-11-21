@@ -19,6 +19,9 @@ model.val_predict=0
 # gpus = (0,1,2,3,4,5,6,7)
 gpus = (0,1,4,5,6,7,8,9)
 
+# rule_goal = 'IfHalfTorus'
+rule_goal = 'IfCone'
+
 for i in range(1):
     trainer = pl.Trainer(devices=gpus, accelerator="gpu", strategy='ddp', precision=16)
     active_3dsprites_train = active_3dsprites_dataset({
@@ -30,8 +33,8 @@ for i in range(1):
                 'scale_min': 1.5,
                 'scale_max': 1.50001,
                 'rand_seed0': 1234+i*10000,
-                'bgcolor': 127,
-                'rule_goal': 'IfHalfTorus',
+                'bgcolor': 127,                
+                'rule_goal': rule_goal,
                 'v_sd': 0,            
                 'goal_frames': 3,
             })
@@ -53,8 +56,8 @@ active_3dsprites_val = active_3dsprites_dataset({
             'scale_min': 1.5,
             'scale_max': 1.50001,
             'rand_seed0': 50000+10000+1234,
-            'bgcolor': 127,
-            'rule_goal': 'IfHalfTorus',
+            'bgcolor': 127,            
+            'rule_goal': rule_goal,
             'v_sd': 0,            
             'goal_frames': 3,
         })
@@ -80,7 +83,7 @@ if trainer.global_rank==0:
                     data_list.append(torch.cat([x['final_lambda'] for x in foo],0))            
 
         final_lambda = torch.cat(data_list,0)
-        with open('/home/rubber/C2PO/goal_data/{}_data_IfHalfTorus_vsd0_snellius-v82_12frames.pkl'.format(s), 'wb') as fh:
+        with open('/home/rubber/C2PO/goal_data/{}_data_{}_vsd0_snellius-v82_12frames.pkl'.format(s, rule_goal), 'wb') as fh:            
             pickle.dump(final_lambda, fh)
 
 
