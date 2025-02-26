@@ -1,7 +1,7 @@
 import argparse
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from C2PO import C2PO 
+from OBR import OBR 
 from torch.utils.data import DataLoader
 from active_dsprites import active_dsprites
 from argparse import ArgumentTypeError
@@ -102,10 +102,10 @@ def main(args):
                 'reduceLR_minlr': args.reduceLR_minlr
             }
             load_path=args.resume_from_checkpoint        
-        model = C2PO.load_from_checkpoint(load_path, **pass_args)
+        model = OBR.load_from_checkpoint(load_path, **pass_args)
         ckpt_path=None
     else:
-        model = C2PO(**pass_args)
+        model = OBR(**pass_args)
         ckpt_path=args.resume_from_checkpoint   
 
     checkpoint_callback = ModelCheckpoint(
@@ -122,7 +122,7 @@ def main(args):
     model.all_calling_args = args
 
     trainer = pl.Trainer(devices=gpus, accelerator="gpu", strategy='ddp' if len(gpus)>1 else None, precision=args.precision, max_epochs=args.max_epochs, callbacks=callbacks,
-        logger=pl.loggers.TensorBoardLogger('./C2PO_logs/'), gradient_clip_val=args.gradient_clip_val, gradient_clip_algorithm='norm', resume_from_checkpoint=ckpt_path,
+        logger=pl.loggers.TensorBoardLogger('./OBR_logs/'), gradient_clip_val=args.gradient_clip_val, gradient_clip_algorithm='norm', resume_from_checkpoint=ckpt_path,
         accumulate_grad_batches= args.accumulate_grad_batches, track_grad_norm=2, num_nodes=1)
     
     trainer.fit(model, train_loader, val_loader)    
@@ -149,7 +149,7 @@ def parseNumList(string):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train IODINE")
+    parser = argparse.ArgumentParser(description="Train OBR")
 
     parser.add_argument('--max_epochs', default=200, type=int, help="Maximum number of epochs to train for.")
     parser.add_argument('--K', default=4, type=int, help="Number of slots in the model")
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     parser.add_argument('--with_goal_net', default=False, type=str2bool, help='Include goal net to learn transform from current to target states')
     parser.add_argument('--ad_rule_goal', default=None, type=str, help='Rule-based goal to sample from in active-dsprites')        
     parser.add_argument('--ad_rule_goal_actions', default=False, type=str2bool, help='Whether to generate actions towards goals in active-dsprites')
-    parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing a C2PO network state from which to load the goal net')
+    parser.add_argument('--init_goal_net_path', default=None, type=str, help='Path to checkpoint file containing a OBR network state from which to load the goal net')
     
 
 
