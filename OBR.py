@@ -199,7 +199,7 @@ def stable_softmax(x, dim=-1):
 
 
 
-class C2PO(pl.LightningModule):
+class OBR(pl.LightningModule):
     def __init__(self, 
             n_latent=16, 
             K=4, 
@@ -278,7 +278,7 @@ class C2PO(pl.LightningModule):
             gradients for inference. I guess autograd requires all intermediate tensors to have requires_grad=True, even if the
             gradient w.r.t. a tensor isn't necessary to compute the gradients of the non-freezed tensors.             
             '''            
-            percept_net = C2PO.load_from_checkpoint(init_percept_net_path, init_percept_net_path=None, init_goal_net_path=None, foo='blah')             
+            percept_net = OBR.load_from_checkpoint(init_percept_net_path, init_percept_net_path=None, init_goal_net_path=None, foo='blah')             
             self.decoder = percept_net.decoder
             self.refine_net = percept_net.refine_net
             self.layer_norms = percept_net.layer_norms
